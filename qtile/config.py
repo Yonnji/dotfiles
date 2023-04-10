@@ -24,6 +24,7 @@ from qtilemods.widget.ibus import IBUS
 from qtilemods.widget.keyboardlight import KeyboardLight
 from qtilemods.widget.power import Power
 from qtilemods.widget.volume import Volume
+from qtilemods.widget.volumemic import VolumeMic
 from qtilemods.widget.wifi import Wifi
 from qtilemods.widget.workspaces import Workspaces
 
@@ -117,7 +118,6 @@ groups = [
     ),
     Group(
         '3',
-        # layouts=[floating_layout],
         layouts=[layout.MonadTall(ratio=0.6, **TILING_CONFIG)],
         matches=[
             Match(wm_class=['firefox-aurora']),
@@ -129,7 +129,7 @@ groups = [
         layouts=[Tiling(**TILING_CONFIG)],
         matches=[Match(wm_class=['thunderbird-default'])],
     ),
-    Group('5', layouts=[layout.Max()]),
+    Group('5', layouts=[Tiling(**TILING_CONFIG)]),
     Group('6', layouts=[layout.Max()]),
 ]
 
@@ -229,6 +229,13 @@ screens = [
                             icon_ext='.svg',
                             icon_size=16,
                             update_interval=60,
+                        ),
+                        VolumeMic(
+                            foreground='#ffffff',
+                            theme_path=ICON_THEME,
+                            icon_ext='.svg',
+                            icon_size=16,
+                            update_interval=15,
                         ),
                     ],
                     close_button_location='right',
