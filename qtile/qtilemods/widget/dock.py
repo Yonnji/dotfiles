@@ -172,7 +172,8 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
         for cl in w.get_wm_class() or []:
             for appid, desktop in self.get_flatpaks():
                 name = desktop['Desktop Entry']['Name']
-                if cl.lower() == name.lower():
+                wmclass = desktop['Desktop Entry'].get('StartupWMClass')
+                if cl.lower() == name.lower() or cl.lower() == wmclass:
                     icon = desktop['Desktop Entry']['Icon']
                     surface = self.get_flatpak_icon(appid, desktop)
                     if surface:
