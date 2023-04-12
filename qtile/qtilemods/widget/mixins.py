@@ -25,8 +25,6 @@ class IconTextMixin(object):
         color = match.group(1)
         delta = 255
 
-        logger.warning(attr, color)
-
         if re.match(r'#[A-Fa-f0-9]{6}', color):
             r = int(color[1:3], 16)
             g = int(color[3:5], 16)

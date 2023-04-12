@@ -2,7 +2,7 @@ import re
 import os
 import subprocess
 
-from libqtile import widget, images
+from libqtile import widget, images, qtile
 from libqtile.command.base import expose_command
 from libqtile.log_utils import logger
 from libqtile.widget import base
@@ -12,10 +12,10 @@ from .mixins import IconTextMixin
 
 class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
     icon_names = (
-            'audio-volume-high-symbolic',
-            'audio-volume-medium-symbolic',
-            'audio-volume-low-symbolic',
-            'audio-volume-muted-symbolic',
+        'audio-volume-high-symbolic',
+        'audio-volume-medium-symbolic',
+        'audio-volume-low-symbolic',
+        'audio-volume-muted-symbolic',
     )
 
     def __init__(self, **config):
@@ -105,12 +105,16 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
         if self.volume < 100:
             super().increase_vol()
         self.update()
+        text = '{:2}%'.format(self.volume)
+        qtile.widgets_map['notification'].update(text, self.volume / 100)
 
     @expose_command()
     def decrease_vol(self):
         if self.volume > 0:
             super().decrease_vol()
         self.update()
+        text = '{:2}%'.format(self.volume)
+        qtile.widgets_map['notification'].update(text, self.volume / 100)
 
     @expose_command()
     def mute(self):

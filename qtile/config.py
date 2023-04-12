@@ -1,7 +1,8 @@
 import copy
 import os
-import sys
+import re
 import subprocess
+import sys
 
 from libqtile import bar, layout, widget, hook, images, qtile
 from libqtile.log_utils import logger
@@ -27,10 +28,13 @@ from qtilemods.widget.volume import Volume
 from qtilemods.widget.volumemic import VolumeMic
 from qtilemods.widget.wifi import Wifi
 from qtilemods.widget.workspaces import Workspaces
+from qtilemods.widget.notification import Notification
 
 
 # TERMINAL = guess_terminal()
 TERMINAL = 'kitty'
+DISPLAY_INTERNAL = 'eDP-1-1'
+DISPLAY_EXTERNAL = 'DP-0'
 ICON_THEME = 'Yaru-magenta'
 CURSOR_THEME = 'Samurai School Girl'
 WALLPAPER = os.path.expanduser('~/Pictures/48.jpg')
@@ -72,6 +76,33 @@ def remap_screens(qtile):
             qtile.focus_screen(i)
             qtile.groups_map[group.name].toscreen()
         qtile.focus_screen(0)
+
+
+def xinput_update(qtile):
+    lines = subprocess.check_output(['xinput', 'list']).decode()
+    for line in lines.split('\n'):
+        m = re.search(r'\s(id=(\d+))\s', line)
+        if not m:
+            continue
+
+        id_ = int(m.group(2))
+
+        if 'touchpad' in line.lower():
+            subprocess.call([
+                'xinput', 'set-prop', str(id_),
+                'libinput Tapping Enabled', '1'])
+            subprocess.call([
+                'xinput', 'set-prop', str(id_),
+                'libinput Natural Scrolling Enabled', '1'])
+
+        elif 'mouse' in line.lower():
+            subprocess.call([
+                'xinput', 'set-prop', str(id_),
+                'libinput Accel Profile Enabled', '0,', '1'])
+
+        elif 'table' in line.lower():
+            subprocess.call([
+                'xinput', 'map-to-output', str(id_), DISPLAY_EXTERNAL])
 
 
 # Configuration variables
@@ -187,6 +218,18 @@ screens = [
                     margin=12,
                 ),
 
+                Notification(
+                    font='Ubuntu Mono Bold',
+                    fontsize=14,
+                    background='#ffffff',
+                    foreground='#ffffff',
+                    selected='#dd0088',
+                    borderwidth=2,
+                    size=192,
+                    padding_x=2,
+                    padding_y=2,
+                    margin=12,
+                ),
                 Entry(
                     prompt='{prompt}',
                     font='Ubuntu Mono',
@@ -353,6 +396,7 @@ keys += [
     Key([], 'XF86AudioLowerVolume', lazy.widget['volume'].decrease_vol(), desc='Volume down'),
     Key([], 'XF86AudioMute', lazy.widget['volume'].mute(), desc='Volume mute'),
     Key([], 'XF86AudioRaiseVolume', lazy.widget['volume'].increase_vol(), desc='Volume up'),
+    Key([], 'XF86AudioMicMute', lazy.widget['volumemic'].mute(), desc='Volume mute'),
 ]
 
 # System
@@ -368,6 +412,7 @@ keys += [
     Key([], 'XF86MonBrightnessUp', lazy.widget['displaylight'].change_backlight(ChangeDirection.UP)),
     Key([], 'XF86MonBrightnessDown', lazy.widget['displaylight'].change_backlight(ChangeDirection.DOWN)),
     Key([], 'XF86Launch4', lazy.widget['power'].switch()),
+    Key([], 'XF86TouchpadToggle', lazy.function(xinput_update)),
 ]
 
 # Typing
@@ -415,17 +460,17 @@ mouse = [
 def startup_once():
     subprocess.call([
         'xrandr',
-        '--output', 'DP-0',
+        '--output', DISPLAY_EXTERNAL,
         '--mode', '1920x1080',
         '--refresh', '143.98',
         '--primary',
     ])
     subprocess.call([
         'xrandr',
-        '--output', 'eDP-1-1',
+        '--output', DISPLAY_INTERNAL,
         '--mode', '1920x1080',
         '--refresh', '144',
-        '--below', 'DP-0',
+        '--below', DISPLAY_EXTERNAL,
     ])
 
     remap_screens(qtile)
@@ -436,16 +481,7 @@ def startup_once():
     # subprocess.call(['xset', 'r', 'rate', '300', '25'])  # keyboard auto repeat
     subprocess.call(['xsetroot', '-cursor_name', 'left_ptr'])  # default cursor
 
-    lines = subprocess.check_output(['xinput', 'list']).decode()
-    for line in inputs.split('\n'):
-        m = re.search(r'\s(id=(\d+))\s', line)
-        id_ = int(m.group(2))
-        if 'touchpad' in line.lower():
-            subprocess.call(['xinput', 'set-prop', id_, '327', '1'])  # enable tapping
-            subprocess.call(['xinput', 'set-prop', id_, '306', '1'])  # enable natural scrolling
-        elif 'mouse' in line.lower():
-            subprocess.call(['xinput', 'set-prop', id_, '321', '0,', '1'])  # disable acceleration
-
+    xinput_update(qtile)
 
 
 # @hook.subscribe.startup_complete
