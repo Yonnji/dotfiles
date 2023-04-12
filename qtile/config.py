@@ -58,12 +58,12 @@ MOD_SHIFT = 'shift'
 MOD_SUPER = 'mod4'
 
 
-def take_screenshot(gui=False):
+def take_screenshot(area=False):
     def f(qtile):
         path = os.path.expanduser('~/Pictures/Screenshots')
         subprocess.Popen([
             'flatpak', 'run', 'org.flameshot.Flameshot',
-            'gui' if gui else 'full', '--path', path,
+            'gui' if area else 'full', '--path', path,
         ], start_new_session=True)
 
     return f
@@ -356,17 +356,21 @@ screens = [
     )
 ]
 # screens.reverse()
+# Keyboard shortcuts, based on GNOME:
+# https://help.gnome.org/users/gnome-help/stable/keyboard-shortcuts-set.html.en
 
 # Navigation
 keys = [
-    Key([MOD_CONTROL, MOD_ALT], 'left', lazy.screen.prev_group(),
-        desc='Move to previous workspace'),
-    Key([MOD_CONTROL, MOD_ALT], 'right', lazy.screen.next_group(),
-        desc='Move to next workspace'),
     Key([MOD_SUPER], 'page_up', lazy.screen.prev_group(),
         desc='Move to previous workspace'),
+    Key([MOD_CONTROL, MOD_ALT], 'left', lazy.screen.prev_group(),
+        desc='Move to previous workspace'),
+
     Key([MOD_SUPER], 'page_down', lazy.screen.next_group(),
         desc='Move to next workspace'),
+    Key([MOD_CONTROL, MOD_ALT], 'right', lazy.screen.next_group(),
+        desc='Move to next workspace'),
+
     Key([MOD_SUPER, MOD_SHIFT], 'down', lazy.layout.shuffle_down(),
         desc='Move window down'),
     Key([MOD_SUPER, MOD_SHIFT], 'left', lazy.layout.shuffle_left(),
@@ -375,12 +379,14 @@ keys = [
         desc='Move window to the right'),
     Key([MOD_SUPER, MOD_SHIFT], 'up', lazy.layout.shuffle_up(),
         desc='Move window up'),
+
     Key([MOD_SUPER], 'down', lazy.layout.down(), desc='Move focus down'),
     Key([MOD_SUPER], 'left', lazy.layout.left(), desc='Move focus to the left'),
     Key([MOD_SUPER], 'right', lazy.layout.right(), desc='Move focus to the right'),
     Key([MOD_SUPER], 'up', lazy.layout.up(), desc='Move focus up'),
-    Key([MOD_ALT], 'tab', lazy.group.next_window(), desc='Switch windows'),
+
     Key([MOD_SUPER], 'tab', lazy.group.next_window(), desc='Switch windows'),
+    Key([MOD_ALT], 'tab', lazy.group.next_window(), desc='Switch windows'),
 ] + [
     Key([MOD_SUPER, MOD_SHIFT], group.name, lazy.window.togroup(group.name),
         desc=f'Move window to workspace {group.name}')
@@ -391,17 +397,26 @@ keys = [
     for group in groups
 ]
 
+# Screenshots
+keys += [
+    Key([MOD_SHIFT], 'print', lazy.function(take_screenshot(area=True)),
+        desc='Save a screenshot of an area to Pictures'),
+    Key([], 'print', lazy.function(take_screenshot()),
+        desc='Save a screenshot to Pictures'),
+]
+
 # Sounds and Media
 keys += [
     Key([], 'XF86AudioLowerVolume', lazy.widget['volume'].decrease_vol(), desc='Volume down'),
     Key([], 'XF86AudioMute', lazy.widget['volume'].mute(), desc='Volume mute'),
     Key([], 'XF86AudioRaiseVolume', lazy.widget['volume'].increase_vol(), desc='Volume up'),
-    Key([], 'XF86AudioMicMute', lazy.widget['volumemic'].mute(), desc='Volume mute'),
+    Key([], 'XF86AudioMicMute', lazy.widget['volumemic'].mute(), desc='Mic mute'),
 ]
 
 # System
 keys += [
     Key([MOD_CONTROL, MOD_ALT], 'delete', lazy.shutdown(), desc='Log out'),
+    Key([MOD_SUPER], 'v', lazy.widget['box'].toggle(), desc='Show/hide the widgets box'),
     Key([MOD_ALT], 'F2', lazy.spawncmd(prompt='> ', widget='entry', complete='entry'),
         desc='Show the run command prompt'),
     Key([MOD_SUPER], 'r', lazy.spawncmd(prompt='> ', widget='entry', complete='entry'),
@@ -436,10 +451,6 @@ keys += [
 keys += [
     Key([MOD_CONTROL, MOD_SHIFT], 'escape', lazy.spawn('gnome-system-monitor'),
         desc='Open System Monitor'),
-    Key([], 'print', lazy.function(take_screenshot()),
-        desc='Take a screenshot'),
-    Key([MOD_ALT], 'print', lazy.function(take_screenshot(gui=True)),
-        desc='Take a screenshot'),
     Key([MOD_SUPER], 'f', lazy.window.toggle_floating(), desc='Toggle floating'),
     Key([MOD_CONTROL, MOD_SUPER], 'r', lazy.reload_config(), desc='Reload configuration'),
 ]
@@ -476,7 +487,12 @@ def startup_once():
     remap_screens(qtile)
 
     subprocess.Popen(['picom'], start_new_session=True)
+
+    os.putenv('GTK_IM_MODULE', 'ibus')
+    os.putenv('QT_IM_MODULE', 'ibus')
+    os.putenv('XMODIFIERS', '@im=ibus')
     subprocess.call(['ibus-daemon', '-dxrR'])
+
     subprocess.call(f'echo "Xcursor.theme: {CURSOR_THEME}" | xrdb -merge', shell=True)
     # subprocess.call(['xset', 'r', 'rate', '300', '25'])  # keyboard auto repeat
     subprocess.call(['xsetroot', '-cursor_name', 'left_ptr'])  # default cursor
