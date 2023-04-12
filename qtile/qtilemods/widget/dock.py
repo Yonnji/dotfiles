@@ -180,6 +180,16 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
                         self._icons_cache[w.wid] = surface
                         return surface
 
+            for desktop_path, desktop in self.get_desktop_files():
+                name = desktop['Desktop Entry']['Name']
+                wmclass = desktop['Desktop Entry'].get('StartupWMClass')
+                if cl.lower() == name.lower() or cl.lower() == wmclass:
+                    icon = desktop['Desktop Entry']['Icon']
+                    surface = self.get_icon_surface(icon, self.icon_size)
+                    if surface:
+                        self._icons_cache[w.wid] = surface
+                        return surface
+
         return self._fallback_icon
 
     def drawbox(self, offset, text, bordercolor, textcolor, width=None, rounded=False,
