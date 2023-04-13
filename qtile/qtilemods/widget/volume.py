@@ -1,3 +1,4 @@
+import json
 import re
 import os
 import subprocess
@@ -31,14 +32,15 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
         self.volume = 0
         self.add_callbacks({
             'Button1': self.mute,
-            'Button2': self.run_app,
-            'Button3': self.run_app,
+            'Button2': self.next_channel,
+            'Button3': self.next_channel,
             'Button4': self.increase_vol,
             'Button5': self.decrease_vol,
         })
 
         self.add_defaults(base.PaddingMixin.defaults)
         self.channel = config.get('channel', '@DEFAULT_AUDIO_SINK@')
+        self.media_class = 'Audio/Sink'
         self.check_mute_string = config.get('check_mute_string', '[MUTED]')
 
     def create_amixer_command(self, *args):
@@ -105,21 +107,68 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
         if self.volume < 100:
             super().increase_vol()
         self.update()
-        text = '{:2}%'.format(self.volume)
-        qtile.widgets_map['notification'].update(text, self.volume / 100)
+
+        if self.volume >= 0:
+            text = '{}%'.format(self.volume)
+            qtile.widgets_map['notification'].update(text, self.volume / 100)
 
     @expose_command()
     def decrease_vol(self):
         if self.volume > 0:
             super().decrease_vol()
         self.update()
-        text = '{:2}%'.format(self.volume)
-        qtile.widgets_map['notification'].update(text, self.volume / 100)
+
+        if self.volume >= 0:
+            text = '{}%'.format(self.volume)
+            qtile.widgets_map['notification'].update(text, self.volume / 100)
 
     @expose_command()
     def mute(self):
         super().mute()
         self.update()
+
+    @expose_command()
+    def next_channel(self):
+        output = subprocess.check_output(['pw-dump', '--no-colors']).decode()
+        data = json.loads(output)
+
+        metadata = []
+        for item in data:
+            if item.get('type') == 'PipeWire:Interface:Metadata':
+                if item.get('props', {}).get('metadata.name') == 'default':
+                    metadata = item.get('metadata', [])
+
+        channel_metadata = {}
+        key = 'default.{}'.format(self.media_class.replace('/', '.').lower())
+        for option in metadata:
+            if option.get('key') == key:
+                channel_metadata = option.get('value')
+
+        channel_id = None
+        channels = []
+        for item in data:
+            props = item.get('info', {}).get('props', {})
+            if props.get('media.class') == self.media_class:
+                channels.append(item)
+                if channel_metadata and channel_metadata.get('name') == props.get('node.name'):
+                    channel_id = len(channels) - 1
+
+        if channel_id is None:
+            return
+
+        channel_id += 1
+        if channel_id >= len(channels):
+            channel_id = 0
+        channel = channels[channel_id]
+
+        subprocess.check_output([
+            'wpctl', 'set-default', str(channel['id'])])
+
+        props = channel.get('info', {}).get('props', {})
+        desc = props.get('node.description')
+        if len(desc) > 30:
+            desc = desc[:30-3] + '...'
+        qtile.widgets_map['notification'].update(desc)
 
     def update(self):
         vol = self.get_volume()
