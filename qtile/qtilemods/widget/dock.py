@@ -5,14 +5,20 @@ import os
 
 from xdg.IconTheme import getIconPath
 
-from libqtile import widget, images, qtile
+from libqtile import bar, widget, images, qtile
+from libqtile.widget import base
 from libqtile.log_utils import logger
 
 from .mixins import AppMixin, IconTextMixin
 from ..icon_theme import get_icon_path
 
 
-class PinnedApp(object):
+class App(object):
+    cmd = None
+    window = None
+
+
+class PinnedApp(App):
     def __init__(self, desktop, icon, cmd):
         self.desktop = desktop
         self.icon = icon
@@ -51,14 +57,27 @@ class PinnedApp(object):
             return self.desktop['Desktop Entry']['StartupWMClass']
 
 
-class UnpinnedApp(object):
+class UnpinnedApp(App):
     def __init__(self, window):
         self.window = window
 
 
 class Dock(IconTextMixin, AppMixin, widget.TaskList):
     def __init__(self, **config):
-        super().__init__(**config)
+        base._Widget.__init__(self, bar.STRETCH, **config)
+        self.add_defaults(widget.TaskList.defaults)
+        self.add_defaults(base.PaddingMixin.defaults)
+        self.add_defaults(base.MarginMixin.defaults)
+        self._icons_cache = {}
+        self._box_end_positions = []
+        self.markup = False
+        self.clicked = None
+        if self.spacing is None:
+            self.spacing = self.margin_x
+
+        self.add_callbacks({'Button1': lambda: self.select_window()})
+        self.add_callbacks({'Button2': lambda: self.select_window(run=True)})
+        self.add_callbacks({'Button3': lambda: self.select_window(run=True)})
 
         self._fallback_icon = None
         icon = get_icon_path(
@@ -133,12 +152,12 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
 
         return pinned_apps + unpinned_apps
 
-    def select_window(self):
+    def select_window(self, run=False):
         if self.clicked:
             app = self.clicked
             w = app.window
 
-            if not w:
+            if (run and app.cmd) or not w:
                 qtile.spawn(app.cmd)
                 return
 
