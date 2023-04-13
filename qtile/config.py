@@ -145,6 +145,8 @@ groups = [
             Match(wm_class=['Gimp-2.10']),
             Match(wm_class=['krita']),
             Match(wm_class=['org.inkscape.Inkscape']),
+            Match(title=['Picture-in-Picture']),
+            Match(title=['Windowed Projector (Program)']),
         ],
     ),
     Group(
