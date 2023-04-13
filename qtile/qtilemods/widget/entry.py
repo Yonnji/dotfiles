@@ -123,7 +123,10 @@ class Entry(base.PaddingMixin, base.MarginMixin, widget.Prompt):
         return f'''<span background="{colors[0]}" foreground="{colors[1]}">{text}</span>'''
 
     def calculate_length(self):
-        return super().calculate_length() + self.margin * 2 + self.padding
+        length = super().calculate_length()
+        if length:
+            length += self.margin * 2 + self.padding * 2
+        return length
 
     def drawbox(self, offset, text, bordercolor, textcolor, width=None, rounded=False):
         if not self.text:
