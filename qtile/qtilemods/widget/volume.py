@@ -104,6 +104,9 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
 
     @expose_command()
     def increase_vol(self):
+        if self.volume < 0:
+            return
+
         if self.volume < 100:
             super().increase_vol()
         self.update()
@@ -114,6 +117,9 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
 
     @expose_command()
     def decrease_vol(self):
+        if self.volume < 0:
+            return
+
         if self.volume > 0:
             super().decrease_vol()
         self.update()
