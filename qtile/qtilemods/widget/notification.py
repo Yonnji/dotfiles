@@ -17,18 +17,22 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
         self.timeout = config.get('timeout', 2)
         self.timeout_id = None
         self.text = ''
-        self.value = 0
+        self.value = None
 
     def _configure(self, qtile, pbar):
         base._TextBox._configure(self, qtile, pbar)
 
     def clear(self, *args):
         self.text = ''
+        self.value = None
         self.bar.draw()
 
     @expose_command()
-    def update(self, text, value):
-        self.value = min(max(value, 0), 1)
+    def update(self, text, value=None):
+        if value is None:
+            self.value = None
+        else:
+            self.value = min(max(value, 0), 1)
         base._TextBox.update(self, text)
 
         if self.timeout_id:
@@ -36,15 +40,12 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
             self.timeout_id = None
         self.timeout_id = self.timeout_add(self.timeout, self.clear)
 
-    def box_width(self):
-        width, _ = self.drawer.max_layout_size([
-            self.fmt.format(self.text)
-        ], self.font, self.fontsize)
-        return width + self.padding_x * 2
-
     def calculate_length(self):
         if self.text:
-            return self.size
+            if self.value is None:
+                return self.layout.width + self.padding_x * 2 + self.margin_x * 2
+            else:
+                return self.size + self.padding_x * 2 + self.margin_x * 2
         else:
             return 0
 
@@ -53,41 +54,40 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
         self.layout.font_family = self.font
         self.layout.font_size = self.fontsize
         self.layout.colour = textcolor
-        if width is not None:
-            self.layout.width = width
 
         framed = self.layout.framed(0, bordercolor, 0, self.padding_y, textcolor)
-        x = offset
-        y = (self.bar.height - framed.height) // 2
-        # w = framed.width
-        w = self.size - self.borderwidth * 2 - self.padding * 2
-        h = framed.height
+        text_x = offset
+        text_y = (self.bar.height - framed.height) // 2
 
-        if rounded:
-            self.drawer.set_source_rgb(self.selected or self.bar.background)
-            if self.value:
-                self.drawer.rounded_fillrect(x, y, w * self.value, h, self.borderwidth)
-            self.drawer.set_source_rgb(self.background or self.bar.background)
-            self.drawer.rounded_rectangle(x, y, w, h, self.borderwidth)
+        rect_x = text_x
+        rect_y = text_y
+
+        if self.value is None:
+            rect_w = framed.width + self.padding_x * 2
+            rect_h = framed.height
+            text_x += self.padding_x
         else:
-            self.drawer.set_source_rgb(self.selected or self.bar.background)
-            if self.value:
-                self.drawer.fillrect(x, y, w * self.value, h, self.borderwidth)
-            self.drawer.set_source_rgb(self.background or self.bar.background)
-            self.drawer.rectangle(x, y, w, h, self.borderwidth)
+            rect_w = self.size + self.padding_x * 2
+            rect_h = self.padding_y * 2
+            text_x += self.size - framed.width + self.padding_x * 2
+            rect_y += framed.height - rect_h
 
-        framed.draw(offset + w / 2 - framed.width / 2, y, rounded)
+        self.drawer.set_source_rgb(bordercolor or self.bar.background)
+        self.drawer.rounded_fillrect(rect_x, rect_y, rect_w, rect_h, self.borderwidth)
+        if self.value:
+            self.drawer.set_source_rgb(self.selected or self.bar.background)
+            self.drawer.rounded_fillrect(rect_x, rect_y, rect_w * self.value, rect_h, self.borderwidth)
+
+        framed.draw(text_x, text_y, rounded)
 
     def draw(self):
         self.drawer.clear(self.bar.background)
 
-        bw = self.box_width()
         self.drawbox(
             self.margin_x,
             self.text,
             self.background,
-            self.foreground,
-            width=bw,
+            self.background if self.value is not None else self.foreground,
             rounded=self.rounded,
         )
-        self.drawer.draw(offsetx=self.offset - self.width, offsety=self.offsety, width=self.width)
+        self.drawer.draw(offsetx=self.offset, offsety=self.offsety, width=self.width)
