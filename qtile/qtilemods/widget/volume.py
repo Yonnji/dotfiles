@@ -80,10 +80,14 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
             return -1
 
         volgroups = mixer_out and mixer_out.split(' ')
-        if volgroups:
-            return int(float(volgroups[1]) * 100)
-        else:
+        if not volgroups:
             return -1
+
+        volgroup = volgroups[1]
+        if not re.match(r'[0-9]+\.?[0-9]*', volgroup):
+            return -1
+
+        return int(float(volgroup) * 100)
 
     def get_icon_key(self, volume):
         if volume <= 0:
