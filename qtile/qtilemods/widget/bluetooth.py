@@ -73,11 +73,12 @@ class Bluetooth(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
                 return -2
 
         out = subprocess.check_output(['bluetoothctl', 'devices', 'Connected']).decode()
-        devices = tuple(filter(None, out.split('\n')))
-        if devices:
-            return len(devices)
+        devices_count = 0
+        for line in out.split('\n'):
+            if re.search(r'([A-Za-z0-9]{2}:){5}[A-Za-z0-9]{2}', line):
+                devices_count += 1
 
-        return -1
+        return devices_count or -1
 
     def poll(self):
         return self.get_signal()
