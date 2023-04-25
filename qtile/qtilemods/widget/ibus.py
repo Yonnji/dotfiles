@@ -16,7 +16,6 @@ class IBUSBackend(_BaseLayoutBackend):
     def get_keyboard(self) -> str:
         command = ['ibus', 'engine']
         try:
-            # logger.warning(command)
             output = check_output(command).decode()
         except CalledProcessError:
             pass
@@ -32,12 +31,24 @@ class IBUSBackend(_BaseLayoutBackend):
 
         command = ['ibus', 'engine', layout]
         try:
-            # logger.warning(command)
             check_output(command)
         except CalledProcessError:
             pass
         except OSError:
             logger.error('Please, check that ibus is available:')
+
+        prefix, *var = layout.split(':')
+        if prefix == 'xkb':
+            layouts = [var[0]]
+            if 'us' not in layouts:
+                layouts.append('us')
+            command = ['setxkbmap', '-layout', ','.join(layouts)]
+            try:
+                check_output(command)
+            except CalledProcessError:
+                pass
+            except OSError:
+                logger.error('Please, check that setxkbmap is available:')
 
 
 class IBUS(base.PaddingMixin, base.MarginMixin, widget.KeyboardLayout):
