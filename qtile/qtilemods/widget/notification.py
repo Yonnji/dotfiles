@@ -1,5 +1,7 @@
-from libqtile import bar
+from libqtile import bar, pangocffi
 from libqtile.command.base import expose_command
+from libqtile.log_utils import logger
+from libqtile.notify import ClosedReason, notifier
 from libqtile.widget import base
 
 
@@ -17,10 +19,33 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
         self.timeout = config.get('timeout', 2)
         self.timeout_id = None
         self.text = ''
+        self.text_length = config.get('text_length', 32)
         self.value = None
 
     def _configure(self, qtile, pbar):
         base._TextBox._configure(self, qtile, pbar)
+
+    async def _config_async(self):
+        if notifier is None:
+            return
+
+        await notifier.register(self.on_notification, {'body'}, on_close=self.on_close)
+
+    def on_notification(self, notification):
+        logger.warning(notification)
+        logger.warning(notification.id)
+        logger.warning(notification.app_name)
+        logger.warning(notification.body)
+        if 'sender-pid' in notification.hints:
+            logger.warning(notification.hints.get('sender-pid').value)
+        if 'desktop-entry' in notification.hints:
+            logger.warning(notification.hints.get('desktop-entry').value)
+
+        text = pangocffi.markup_escape_text(notification.body or notification.summary)
+        self.qtile.call_soon_threadsafe(self.update, text)
+
+    def on_close(self, notification_id):
+        pass
 
     def clear(self, *args):
         self.text = ''
@@ -33,6 +58,9 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
             self.value = None
         else:
             self.value = min(max(value, 0), 1)
+
+        if len(text) > self.text_length:
+            text = text[:self.text_length - 3] + '...'
         base._TextBox.update(self, text)
 
         if self.timeout_id:
@@ -91,3 +119,7 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
             rounded=self.rounded,
         )
         self.drawer.draw(offsetx=self.offset, offsety=self.offsety, width=self.width)
+
+    def finalize(self):
+        notifier.unregister(self.update)
+        super().finalize()
