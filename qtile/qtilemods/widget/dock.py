@@ -6,8 +6,9 @@ import os
 from xdg.IconTheme import getIconPath
 
 from libqtile import bar, widget, images, qtile
-from libqtile.widget import base
 from libqtile.log_utils import logger
+from libqtile.notify import ClosedReason, notifier
+from libqtile.widget import base
 
 from .mixins import AppMixin, IconTextMixin
 from ..icon_theme import get_icon_path
@@ -23,12 +24,11 @@ class PinnedApp(App):
         self.desktop = desktop
         self.icon = icon
         self.cmd = cmd
-        self.window = None
 
     def clone(self):
         return PinnedApp(desktop=self.desktop, icon=self.icon, cmd=self.cmd)
 
-    def matches(self, window):
+    def matches_window(self, window):
         win_classes = window.get_wm_class() or []
 
         if self.get_name() == window.name:
@@ -68,6 +68,7 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
         self.add_defaults(widget.TaskList.defaults)
         self.add_defaults(base.PaddingMixin.defaults)
         self.add_defaults(base.MarginMixin.defaults)
+        self._notifications = {}
         self._icons_cache = {}
         self._box_end_positions = []
         self.markup = False
@@ -117,11 +118,58 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
 
                     break
 
+    async def _config_async(self):
+        if notifier is None:
+            return
+
+        await notifier.register(self.on_notification, set(), on_close=self.on_close)
+
+    def on_notification(self, notification):
+        pid = -1
+        name = None
+        if 'sender-pid' in notification.hints:
+            pid = notification.hints['sender-pid'].value
+        if 'desktop-entry' in notification.hints:
+            name = notification.hints['desktop-entry'].value
+
+        window = None
+        for app in self.windows:
+            if app.window:
+                if app.window.get_pid() == pid:
+                    window = app.window
+                    break
+
+                if app.window.name == name:
+                    window = app.window
+                    break
+
+                for cl in (app.window.get_wm_class() or []):
+                    if cl == name:
+                        window = app.window
+                        break
+
+        if window:
+            if window not in self._notifications:
+                self._notifications[window] = 0
+            self._notifications[window] += 1
+
+        # logger.warning(notification)
+        # logger.warning(notification.id)
+        # logger.warning(notification.app_name)
+        # logger.warning(notification.body)
+        # logger.warning(notification.hints.get('sender-pid'))
+        # self.qtile.call_soon_threadsafe(self.update, notification)
+
+    def on_close(self, notification_id):
+        pass
+
     def box_width(self, text):
         return 0
 
-    def get_taskname(self, window):
-        return ''
+    def get_taskname(self, app):
+        if app.window:
+            if app.window in self._notifications:
+                return str(self._notifications[app.window])
 
     def calc_box_widths(self):
         apps = self.windows
@@ -129,7 +177,7 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
             return []
 
         icons = [self.get_window_icon(app) for app in apps]
-        names = ['' for app in apps]
+        names = [self.get_taskname(app) for app in apps]
         width_boxes = [(self.icon_size + self.padding_x) for icon in icons]
         return zip(apps, icons, names, width_boxes)
 
@@ -141,7 +189,7 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
         for group in self.qtile.groups:
             for window in group.windows:
                 for i, app in enumerate(pinned_apps):
-                    if app.matches(window):
+                    if app.matches_window(window):
                         if app.window:
                             app = app.clone()
                             pinned_apps.insert(i + 1, app)
@@ -156,6 +204,7 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
         if self.clicked:
             app = self.clicked
             w = app.window
+            self._notifications.pop(w, None)
 
             if (run and app.cmd) or not w:
                 qtile.spawn(app.cmd)
@@ -234,6 +283,11 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
 
         if icon:
             self.draw_icon(icon, offset)
+
+        if text:
+            self.layout.text = text
+            framed = self.layout.framed(self.borderwidth, self.urgent_border, self.padding_x, self.padding_y / 2, textcolor)
+            framed.draw_fill(offset, self.padding_y * 2 + self.icon_size - framed.height, rounded)
 
     def draw_icon(self, surface, offset):
         if not surface:
