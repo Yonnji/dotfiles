@@ -311,7 +311,8 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
             w = app.window
             if w:
                 if w.urgent:
-                    border = self.urgent_border
+                    # border = self.urgent_border
+                    task = '!'
                 elif w is w.group.current_window:
                     if self.bar.screen.group.name == w.group.name and self.qtile.current_screen == self.bar.screen:
                         border = self.border
