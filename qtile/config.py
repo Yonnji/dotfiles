@@ -5,11 +5,11 @@ import subprocess
 import sys
 
 from libqtile import bar, layout, widget, hook, images, qtile
-from libqtile.log_utils import logger
+from libqtile.command.base import expose_command
 from libqtile.config import Click, Drag, Group, Key, Match, Screen
 from libqtile.lazy import lazy
-from libqtile.utils import guess_terminal
 from libqtile.log_utils import logger
+from libqtile.utils import guess_terminal
 
 sys.path.append(os.path.dirname(__file__))
 
@@ -31,13 +31,17 @@ from qtilemods.widget.workspaces import Workspaces
 from qtilemods.widget.notification import Notification
 
 
-# TERMINAL = guess_terminal()
-TERMINAL = 'kitty'
+if os.path.exists('/bin/kitty'):
+    TERMINAL = 'kitty'
+else:
+    TERMINAL = guess_terminal()
 DISPLAY_INTERNAL = 'eDP-1-1'
 DISPLAY_EXTERNAL = 'DP-0'
 ICON_THEME = 'Yaru-magenta'
 CURSOR_THEME = 'Samurai School Girl'
 WALLPAPER = os.path.expanduser('~/Pictures/48.jpg')
+ACCENT_COLOR_A = '#E91E63'
+ACCENT_COLOR_B = '#2196F3'
 STACKING_CONFIG = {
     'border_focus': '#ff00aa',
     'border_normal': '#888888',
@@ -78,7 +82,7 @@ def remap_screens(qtile):
         qtile.focus_screen(0)
 
 
-def xinput_update(qtile):
+def input_update(qtile):
     lines = subprocess.check_output(['xinput', 'list']).decode()
     for line in lines.split('\n'):
         m = re.search(r'\s(id=(\d+))\s', line)
@@ -100,9 +104,68 @@ def xinput_update(qtile):
                 'xinput', 'set-prop', str(id_),
                 'libinput Accel Profile Enabled', '0,', '1'])
 
-        elif 'table' in line.lower():
-            subprocess.call([
-                'xinput', 'map-to-output', str(id_), DISPLAY_EXTERNAL])
+        elif 'wacom' in line.lower():
+            if 'stylus' in line.lower():  # pen
+                subprocess.call(['xinput', 'map-to-output', str(id_), DISPLAY_EXTERNAL])
+
+            else:  # tablet
+                bindings = {
+                    # '1': ('key', 'ctrl', 'alt', '4'),  # Button 1
+                    '1': ('key', 'ctrl', 'z'),  # Button 1
+                    '2': ('key', 'ctrl', 'alt', '3'),  # Button 2
+                    '3': ('key', 'ctrl', 'alt', '2'),  # Button 3
+                    '8': ('key', 'ctrl', 'alt', '1'),  # Button 4
+                }
+                for button, action in bindings.items():
+                    subprocess.call(['xsetwacom', '--set', str(id_), 'Button', button] + list(action))
+
+
+def display_init(qtile):
+    subprocess.call([
+        'xrandr',
+        '--output', DISPLAY_EXTERNAL,
+        '--mode', '1920x1080',
+        '--refresh', '143.98',
+        '--primary',
+    ])
+    subprocess.call([
+        'xrandr',
+        '--output', DISPLAY_INTERNAL,
+        '--mode', '1920x1080',
+        '--refresh', '144',
+        #'--below', DISPLAY_EXTERNAL,
+        '--left-of', DISPLAY_EXTERNAL,
+    ])
+
+
+def display_update(qtile):
+    lines = subprocess.check_output(['xrandr', '--listmonitors']).decode()
+
+    have_external = False
+    for line in lines.split('\n'):
+        fields = line.split(' ')
+        if fields and fields[-1] == DISPLAY_EXTERNAL:
+            have_external = True
+            break
+
+    if have_external:
+        subprocess.call(['xrandr', '--output', DISPLAY_EXTERNAL, '--off'])
+    else:
+        display_init(qtile)
+
+
+def next_screen(qtile):
+    screen_index = None
+    for i, screen in enumerate(qtile.screens):
+        if screen is qtile.current_screen:
+            screen_index = i
+            break
+
+    screen_index += 1
+    if screen_index >= len(qtile.screens):
+        screen_index = 0
+
+    qtile.focus_screen(screen_index)
 
 
 # Configuration variables
@@ -140,11 +203,7 @@ groups = [
         '2',
         layouts=[Tiling(**TILING_CONFIG)],
         matches=[
-            Match(wm_class=['Blender']),
             Match(wm_class=['Emacs']),
-            Match(wm_class=['Gimp-2.10']),
-            Match(wm_class=['krita']),
-            Match(wm_class=['org.inkscape.Inkscape']),
             Match(title=['Picture-in-Picture']),
             Match(title=['Windowed Projector (Program)']),
         ],
@@ -162,7 +221,17 @@ groups = [
         layouts=[Tiling(**TILING_CONFIG)],
         matches=[Match(wm_class=['thunderbird-default'])],
     ),
-    Group('5', layouts=[Tiling(**TILING_CONFIG)]),
+    # Group('5', layouts=[Tiling(**TILING_CONFIG)]),
+    Group(
+        '5',
+        layouts=[layout.Max()],
+        matches=[
+            Match(wm_class=['Blender']),
+            Match(wm_class=['Gimp-2.10']),
+            Match(wm_class=['krita']),
+            Match(wm_class=['org.inkscape.Inkscape']),
+        ],
+    ),
     Group('6', layouts=[layout.Max()]),
 ]
 
@@ -178,11 +247,11 @@ screens = [
                     active='#ffffff',
                     inactive='#aaaaaa',
                     block_highlight_text_color='#ffffff',
-                    this_current_screen_border='#dd0088',
+                    this_current_screen_border=ACCENT_COLOR_A,
                     this_screen_border='#404040',
-                    other_current_screen_border='#0088dd',
+                    other_current_screen_border=ACCENT_COLOR_B,
                     other_screen_border='#404040',
-                    urgent_border='#ff0000',
+                    urgent_border=None,
                     padding_x=8,
                     padding_y=4,
                     spacing=0,
@@ -211,9 +280,9 @@ screens = [
                     ),
                     padding=4,
                     icon_size=32,
-                    # highlight_method='block',
-                    border='#dd0088',
-                    other_border='#0088dd',
+                    fontsize=14,
+                    border=ACCENT_COLOR_A,
+                    other_border=ACCENT_COLOR_B,
                     unfocused_border='#ffffff',
                     spacing=8,
                     theme_path=ICON_THEME,
@@ -223,11 +292,10 @@ screens = [
 
                 Notification(
                     highlight_method='line',
-                    # font='Ubuntu Mono Bold',
                     fontsize=14,
                     background='#ffffff',
                     foreground='#000000',
-                    selected='#dd0088',
+                    selected=ACCENT_COLOR_A,
                     borderwidth=2,
                     size=128,
                     padding_x=8,
@@ -240,7 +308,7 @@ screens = [
                     fontsize=16,
                     background='#ffffff',
                     foreground='#000000',
-                    cursor_color='#dd0088',
+                    cursor_color=ACCENT_COLOR_A,
                     padding_x=16,
                     padding_y=2,
                     margin=12,
@@ -389,7 +457,7 @@ keys = [
     Key([MOD_SUPER], 'right', lazy.layout.right(), desc='Move focus to the right'),
     Key([MOD_SUPER], 'up', lazy.layout.up(), desc='Move focus up'),
 
-    Key([MOD_SUPER], 'tab', lazy.group.next_window(), desc='Switch windows'),
+    Key([MOD_SUPER], 'tab', lazy.function(next_screen), desc='Switch screens'),
     Key([MOD_ALT], 'tab', lazy.group.next_window(), desc='Switch windows'),
 ] + [
     Key([MOD_SUPER, MOD_SHIFT], group.name, lazy.window.togroup(group.name),
@@ -430,8 +498,10 @@ keys += [
     Key([], 'XF86KbdBrightnessDown', lazy.widget['keyboardlight'].change_backlight(ChangeDirection.DOWN)),
     Key([], 'XF86MonBrightnessUp', lazy.widget['displaylight'].change_backlight(ChangeDirection.UP)),
     Key([], 'XF86MonBrightnessDown', lazy.widget['displaylight'].change_backlight(ChangeDirection.DOWN)),
+    Key([], 'XF86Launch1', lazy.function(display_update)),
+    Key([], 'XF86Launch3', lazy.spawn('asusctl led-mode -n')),
     Key([], 'XF86Launch4', lazy.widget['power'].switch()),
-    Key([], 'XF86TouchpadToggle', lazy.function(xinput_update)),
+    Key([], 'XF86TouchpadToggle', lazy.function(input_update)),
 ]
 
 # Typing
@@ -473,21 +543,7 @@ mouse = [
 
 @hook.subscribe.startup_once
 def startup_once():
-    subprocess.call([
-        'xrandr',
-        '--output', DISPLAY_EXTERNAL,
-        '--mode', '1920x1080',
-        '--refresh', '143.98',
-        '--primary',
-    ])
-    subprocess.call([
-        'xrandr',
-        '--output', DISPLAY_INTERNAL,
-        '--mode', '1920x1080',
-        '--refresh', '144',
-        '--below', DISPLAY_EXTERNAL,
-    ])
-
+    display_init(qtile)
     remap_screens(qtile)
 
     subprocess.Popen(['picom'], start_new_session=True)
@@ -498,10 +554,9 @@ def startup_once():
     subprocess.call(['ibus-daemon', '-dxrR'])
 
     subprocess.call(f'echo "Xcursor.theme: {CURSOR_THEME}" | xrdb -merge', shell=True)
-    # subprocess.call(['xset', 'r', 'rate', '300', '25'])  # keyboard auto repeat
     subprocess.call(['xsetroot', '-cursor_name', 'left_ptr'])  # default cursor
 
-    xinput_update(qtile)
+    input_update(qtile)
 
 
 # @hook.subscribe.startup_complete
