@@ -316,8 +316,10 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
                 elif w is w.group.current_window:
                     if self.bar.screen.group.name == w.group.name and self.qtile.current_screen == self.bar.screen:
                         border = self.border
+                        self._notifications.pop(w, None)
                     elif self.qtile.current_screen == w.group.screen:
                         border = self.other_border
+                        self._notifications.pop(w, None)
             else:
                 border = None
 
