@@ -43,6 +43,11 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
         self.media_class = 'Audio/Sink'
         self.check_mute_string = config.get('check_mute_string', '[MUTED]')
 
+    def timer_setup(self):
+        if self.theme_path:
+            self.setup_images()
+        self.timeout_add(self.update_interval, self.update)
+
     def create_amixer_command(self, *args):
         cmd = ['wpctl']
 
