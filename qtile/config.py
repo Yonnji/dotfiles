@@ -203,17 +203,17 @@ groups = [
         '2',
         layouts=[Tiling(**TILING_CONFIG)],
         matches=[
-            Match(wm_class=['Emacs']),
             Match(title=['Picture-in-Picture']),
             Match(title=['Windowed Projector (Program)']),
+            Match(wm_class=['Emacs']),
         ],
     ),
     Group(
         '3',
         layouts=[layout.MonadTall(ratio=0.6, **TILING_CONFIG)],
         matches=[
-            Match(wm_class=['firefox-aurora']),
             Match(wm_class=['Slack']),
+            Match(wm_class=['firefox-aurora']),
         ],
     ),
     Group(
@@ -228,6 +228,8 @@ groups = [
         matches=[
             Match(wm_class=['Blender']),
             Match(wm_class=['Gimp-2.10']),
+            Match(wm_class=['NVIDIA Nsight Graphics']),
+            Match(wm_class=['Substance Designer']),
             Match(wm_class=['krita']),
             Match(wm_class=['org.inkscape.Inkscape']),
         ],
@@ -270,7 +272,7 @@ screens = [
                         'kitty',
                         'emacs',
                         'org.gnome.Nautilus',
-                        'com.discordapp.Discord',
+                        'discord',
                         'com.slack.Slack',
                         'org.blender.Blender',
                         'org.videolan.VLC',
