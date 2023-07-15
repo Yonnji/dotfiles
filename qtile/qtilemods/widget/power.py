@@ -63,6 +63,12 @@ class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
 
         profile = self.profiles[profile_index]
         subprocess.call(['powerprofilesctl', 'set', profile])
+
+        if profile == 'balanced':
+            subprocess.Popen(['picom'], start_new_session=True)
+        else:
+            subprocess.run(['pkill', 'picom'])
+
         self.update(self.get_profile_index())
 
     def get_profile_index(self):
