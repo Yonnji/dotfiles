@@ -3,7 +3,7 @@ import re
 import os
 import subprocess
 
-from libqtile import widget, images, qtile
+from libqtile import bar, widget, images, qtile
 from libqtile.command.base import expose_command
 from libqtile.log_utils import logger
 from libqtile.widget import base
@@ -11,7 +11,47 @@ from libqtile.widget import base
 from .mixins import IconTextMixin
 
 
-class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
+class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
+    orientations = base.ORIENTATION_HORIZONTAL
+    defaults = [
+        ("cardid", None, "Card Id"),
+        ("device", "default", "Device Name"),
+        ("channel", "Master", "Channel"),
+        ("padding", 3, "Padding left and right. Calculated if None."),
+        ("update_interval", 0.2, "Update time in seconds."),
+        ("theme_path", None, "Path of the icons"),
+        (
+            "emoji",
+            False,
+            "Use emoji to display volume states, only if ``theme_path`` is not set."
+            "The specified font needs to contain the correct unicode characters.",
+        ),
+        ("mute_command", None, "Mute command"),
+        ("volume_app", None, "App to control volume"),
+        ("volume_up_command", None, "Volume up command"),
+        ("volume_down_command", None, "Volume down command"),
+        (
+            "get_volume_command",
+            None,
+            "Command to get the current volume. "
+            "The expected output should include 1-3 numbers and a ``%`` sign.",
+        ),
+        ("check_mute_command", None, "Command to check mute status"),
+        (
+            "check_mute_string",
+            "[off]",
+            "String expected from check_mute_command when volume is muted."
+            "When the output of the command matches this string, the"
+            "audio source is treated as muted.",
+        ),
+        (
+            "step",
+            2,
+            "Volume change for up an down commands in percentage."
+            "Only used if ``volume_up_command`` and ``volume_down_command`` are not set.",
+        ),
+    ]
+
     icon_names = (
         'audio-volume-high-symbolic',
         'audio-volume-medium-symbolic',
@@ -20,6 +60,10 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
     )
 
     def __init__(self, **config):
+        base.InLoopPollText.__init__(self, **config)
+        self.add_defaults(PipewireVolume.defaults)
+        self.volume = 0
+
         # self.foreground = config.get('foreground', '#ffffff')
         self.icon_ext = config.get('icon_ext', '.png')
         self.icon_size = config.get('icon_size', 0)
@@ -27,9 +71,6 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
         self.images = {}
         self.current_icon = 'audio-volume-muted-symbolic'
 
-        base._TextBox.__init__(self, '', **config)
-        self.add_defaults(widget.Volume.defaults)
-        self.volume = 0
         self.add_callbacks({
             'Button1': self.mute,
             'Button2': self.next_channel,
@@ -43,12 +84,19 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
         self.media_class = 'Audio/Sink'
         self.check_mute_string = config.get('check_mute_string', '[MUTED]')
 
-    def timer_setup(self):
+    def _configure(self, qtile, pbar):
         if self.theme_path:
-            self.setup_images()
-        self.timeout_add(self.update_interval, self.update)
+            self.length_type = bar.STATIC
+            self.length = 0
+        base.ThreadPoolText._configure(self, qtile, pbar)
+        self.setup_images()
 
-    def create_amixer_command(self, *args):
+    def calculate_length(self):
+        return (
+            super().calculate_length() +
+            self.icon_size + self.icon_spacing)
+
+    def create_command(self, *args):
         cmd = ['wpctl']
 
         for arg in args:
@@ -71,7 +119,7 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
             if self.get_volume_command is not None:
                 get_volume_cmd = self.get_volume_command
             else:
-                get_volume_cmd = self.create_amixer_command('sget', self.channel)
+                get_volume_cmd = self.create_command('sget', self.channel)
 
             mixer_out = subprocess.getoutput(get_volume_cmd)
         except subprocess.CalledProcessError:
@@ -106,19 +154,21 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
 
         return f'audio-volume-{mode}-symbolic'
 
-    def calculate_length(self):
-        return (
-            super().calculate_length() +
-            self.icon_size + self.icon_spacing)
-
     @expose_command()
     def increase_vol(self):
         if self.volume < 0:
             return
 
         if self.volume < 100:
-            super().increase_vol()
-        self.update()
+            if self.volume_up_command is not None:
+                volume_up_cmd = self.volume_up_command
+            else:
+                volume_up_cmd = self.create_command(
+                    "-q", "sset", self.channel, "{}%+".format(self.step)
+                )
+            subprocess.call(volume_up_cmd, shell=True)
+
+        self.update(self.poll())
 
         if self.volume >= 0:
             text = '{}%'.format(self.volume)
@@ -130,8 +180,15 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
             return
 
         if self.volume > 0:
-            super().decrease_vol()
-        self.update()
+            if self.volume_down_command is not None:
+                volume_down_cmd = self.volume_down_command
+            else:
+                volume_down_cmd = self.create_command(
+                    "-q", "sset", self.channel, "{}%-".format(self.step)
+                )
+            subprocess.call(volume_down_cmd, shell=True)
+
+        self.update(self.poll())
 
         if self.volume >= 0:
             text = '{}%'.format(self.volume)
@@ -139,8 +196,13 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
 
     @expose_command()
     def mute(self):
-        super().mute()
-        self.update()
+        if self.mute_command is not None:
+            mute_cmd = self.mute_command
+        else:
+            mute_cmd = self.create_command("-q", "sset", self.channel, "toggle")
+        subprocess.call(mute_cmd, shell=True)
+
+        self.update(self.poll())
 
     @expose_command()
     def next_channel(self):
@@ -185,8 +247,15 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
             desc = desc[:30-3] + '...'
         qtile.widgets_map['notification'].update(desc)
 
-    def update(self):
-        vol = self.get_volume()
+    @expose_command()
+    def run_app(self):
+        if self.volume_app is not None:
+            subprocess.Popen(self.volume_app, shell=True)
+
+    def poll(self):
+        return self.get_volume()
+
+    def update(self, vol):
         if vol != self.volume:
             self.volume = vol
             self.text = ''
@@ -198,4 +267,4 @@ class Volume(IconTextMixin, base.PaddingMixin, widget.Volume):
 
             self.draw()
 
-        self.timeout_add(self.update_interval, self.update)
+        # self.timeout_add(self.update_interval, self.update)

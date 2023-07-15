@@ -7,10 +7,10 @@ from libqtile.command.base import expose_command
 from libqtile.log_utils import logger
 from libqtile.widget import base
 
-from .volume import Volume
+from .pipewire_volume import PipewireVolume
 
 
-class VolumeMic(Volume):
+class VolumeMic(PipewireVolume):
     icon_names = (
         'microphone-disabled-symbolic',
         'microphone-hardware-disabled-symbolic',
@@ -21,6 +21,10 @@ class VolumeMic(Volume):
     )
 
     def __init__(self, **config):
+        base.InLoopPollText.__init__(self, **config)
+        self.add_defaults(PipewireVolume.defaults)
+        self.volume = 0
+
         # self.foreground = config.get('foreground', '#ffffff')
         self.icon_ext = config.get('icon_ext', '.png')
         self.icon_size = config.get('icon_size', 0)
@@ -28,9 +32,6 @@ class VolumeMic(Volume):
         self.images = {}
         self.current_icon = 'microphone-sensitivity-muted-symbolic'
 
-        base._TextBox.__init__(self, '', **config)
-        self.add_defaults(widget.Volume.defaults)
-        self.volume = 0
         self.add_callbacks({
             'Button1': self.mute,
             'Button2': self.run_app,
@@ -41,6 +42,7 @@ class VolumeMic(Volume):
 
         self.add_defaults(base.PaddingMixin.defaults)
         self.channel = config.get('channel', '@DEFAULT_AUDIO_SOURCE@')
+        # self.media_class = 'Audio/Source'
         self.check_mute_string = config.get('check_mute_string', '[MUTED]')
 
     def get_icon_key(self, volume):
