@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 from libqtile import bar, layout, widget, hook, images, qtile
 from libqtile.command.base import expose_command
@@ -24,7 +25,7 @@ from qtilemods.widget.entry import Entry
 from qtilemods.widget.ibus import IBUS
 from qtilemods.widget.keyboardlight import KeyboardLight
 from qtilemods.widget.power import Power
-from qtilemods.widget.volume import Volume
+from qtilemods.widget.pipewire_volume import PipewireVolume
 from qtilemods.widget.volumemic import VolumeMic
 from qtilemods.widget.wifi import Wifi
 from qtilemods.widget.workspaces import Workspaces
@@ -38,8 +39,8 @@ else:
 DISPLAY_INTERNAL = 'eDP-1-1'
 DISPLAY_EXTERNAL = 'DP-0'
 ICON_THEME = 'Yaru-magenta'
-CURSOR_THEME = 'Samurai School Girl'
-WALLPAPER = os.path.expanduser('~/Pictures/48.jpg')
+CURSOR_THEME = 'Breeze_Light_Samurai'
+WALLPAPER = os.path.expanduser('~/Pictures/wallpaper.jpeg')
 ACCENT_COLOR_A = '#E91E63'
 ACCENT_COLOR_B = '#2196F3'
 STACKING_CONFIG = {
@@ -120,25 +121,42 @@ def input_update(qtile):
                     subprocess.call(['xsetwacom', '--set', str(id_), 'Button', button] + list(action))
 
 
-def display_init(qtile):
-    subprocess.call([
-        'xrandr',
-        '--output', DISPLAY_EXTERNAL,
-        '--mode', '1920x1080',
-        '--refresh', '143.98',
-        '--primary',
-    ])
-    subprocess.call([
-        'xrandr',
-        '--output', DISPLAY_INTERNAL,
-        '--mode', '1920x1080',
-        '--refresh', '144',
-        #'--below', DISPLAY_EXTERNAL,
-        '--left-of', DISPLAY_EXTERNAL,
-    ])
+def xrandr(**opts):
+    args = ['xrandr']
+    for k in ('output', 'mode', 'refresh', 'primary', 'off', 'below', 'left-of'):
+        if k in opts:
+            if opts[k] is True:
+                args += [f'--{k}']
+            else:
+                args += [f'--{k}', opts[k]]
+
+    logger.info(' '.join(args))
+    subprocess.call(args)
 
 
-def display_update(qtile):
+def display_autoconfig(qtile):
+    external = {
+        'output': DISPLAY_EXTERNAL,
+        'mode': '1920x1080',
+        'refresh': '143.98',
+        'primary': True,
+    }
+    xrandr(**external)
+
+    internal = {
+        'output': DISPLAY_INTERNAL,
+        'mode': '1920x1080',
+        'refresh': '60.01',
+        # 'below': DISPLAY_EXTERNAL,
+        'left-of': DISPLAY_EXTERNAL,
+    }
+    xrandr(**internal)
+
+    internal['refresh'] = '144'
+    xrandr(**internal)
+
+
+def display_toggle(qtile):
     lines = subprocess.check_output(['xrandr', '--listmonitors']).decode()
 
     have_external = False
@@ -149,9 +167,10 @@ def display_update(qtile):
             break
 
     if have_external:
-        subprocess.call(['xrandr', '--output', DISPLAY_EXTERNAL, '--off'])
+        xrandr(output=DISPLAY_EXTERNAL, off=True)
     else:
-        display_init(qtile)
+        display_autoconfig(qtile)
+    remap_screens(qtile)
 
 
 def next_screen(qtile):
@@ -166,6 +185,19 @@ def next_screen(qtile):
         screen_index = 0
 
     qtile.focus_screen(screen_index)
+
+
+def spawn_later(cmd, t):
+    def f(qtile):
+        time.sleep(t)
+        qtile.spawn(cmd)
+
+    return f
+
+
+def set_position_floating(qtile, x, y):
+    with open(os.path.expanduser('~') + '/qtile.log', 'w') as f:
+        f.write(f'set_position_floating {qtile} {x} {y}\n')
 
 
 # Configuration variables
@@ -199,6 +231,7 @@ groups = [
             Match(wm_class=['discord']),
         ],
     ),
+
     Group(
         '2',
         layouts=[Tiling(**TILING_CONFIG)],
@@ -208,6 +241,7 @@ groups = [
             Match(wm_class=['Emacs']),
         ],
     ),
+
     Group(
         '3',
         layouts=[layout.MonadTall(ratio=0.6, **TILING_CONFIG)],
@@ -216,12 +250,13 @@ groups = [
             Match(wm_class=['firefox-aurora']),
         ],
     ),
+
     Group(
         '4',
         layouts=[Tiling(**TILING_CONFIG)],
         matches=[Match(wm_class=['thunderbird-default'])],
     ),
-    # Group('5', layouts=[Tiling(**TILING_CONFIG)]),
+
     Group(
         '5',
         layouts=[layout.Max()],
@@ -230,10 +265,16 @@ groups = [
             Match(wm_class=['Gimp-2.10']),
             Match(wm_class=['NVIDIA Nsight Graphics']),
             Match(wm_class=['Substance Designer']),
+            Match(wm_class=['Unity']),
+            Match(wm_class=['Waveform']),
+            Match(wm_class=['kdenlive']),
             Match(wm_class=['krita']),
+            Match(wm_class=['maya.bin']),
             Match(wm_class=['org.inkscape.Inkscape']),
+            Match(wm_class=['tiled']),
         ],
     ),
+
     Group('6', layouts=[layout.Max()]),
 ]
 
@@ -384,7 +425,7 @@ screens = [
                     padding_x=4,
                     padding_y=4,
                 ),
-                Volume(
+                PipewireVolume(
                     foreground='#ffffff',
                     theme_path=ICON_THEME,
                     icon_ext='.svg',
@@ -481,9 +522,9 @@ keys += [
 
 # Sounds and Media
 keys += [
-    Key([], 'XF86AudioLowerVolume', lazy.widget['volume'].decrease_vol(), desc='Volume down'),
-    Key([], 'XF86AudioMute', lazy.widget['volume'].mute(), desc='Volume mute'),
-    Key([], 'XF86AudioRaiseVolume', lazy.widget['volume'].increase_vol(), desc='Volume up'),
+    Key([], 'XF86AudioLowerVolume', lazy.widget['pipewirevolume'].decrease_vol(), desc='Volume down'),
+    Key([], 'XF86AudioMute', lazy.widget['pipewirevolume'].mute(), desc='Volume mute'),
+    Key([], 'XF86AudioRaiseVolume', lazy.widget['pipewirevolume'].increase_vol(), desc='Volume up'),
     Key([], 'XF86AudioMicMute', lazy.widget['volumemic'].mute(), desc='Mic mute'),
 ]
 
@@ -500,7 +541,7 @@ keys += [
     Key([], 'XF86KbdBrightnessDown', lazy.widget['keyboardlight'].change_backlight(ChangeDirection.DOWN)),
     Key([], 'XF86MonBrightnessUp', lazy.widget['displaylight'].change_backlight(ChangeDirection.UP)),
     Key([], 'XF86MonBrightnessDown', lazy.widget['displaylight'].change_backlight(ChangeDirection.DOWN)),
-    Key([], 'XF86Launch1', lazy.function(display_update)),
+    Key([], 'XF86Launch1', lazy.function(display_toggle)),
     Key([], 'XF86Launch3', lazy.spawn('asusctl led-mode -n')),
     Key([], 'XF86Launch4', lazy.widget['power'].switch()),
     Key([], 'XF86TouchpadToggle', lazy.function(input_update)),
@@ -529,6 +570,7 @@ keys += [
         desc='Open System Monitor'),
     Key([MOD_SUPER], 'f', lazy.window.toggle_floating(), desc='Toggle floating'),
     Key([MOD_CONTROL, MOD_SUPER], 'r', lazy.reload_config(), desc='Reload configuration'),
+    Key([MOD_SUPER], 'l', lazy.function(spawn_later('xset dpms force off', 0.25)), desc='Turn off the displays'),
 ]
 
 mouse = [
@@ -540,31 +582,36 @@ mouse = [
          start=lazy.window.get_size()),
     Drag([MOD_SUPER, MOD_CONTROL], 'Button1', lazy.window.set_size_floating(),
          start=lazy.window.get_size()),
+
+    # Drag([], 'Button1', lazy.window.set_position_floating(),
+    #      start=lazy.window.get_position()),
+
+    # Drag([MOD_ALT], 'Button1', lazy.function(set_position_floating)),
 ]
 
 
 @hook.subscribe.startup_once
 def startup_once():
-    display_init(qtile)
+    display_autoconfig(qtile)
     remap_screens(qtile)
 
-    subprocess.Popen(['picom'], start_new_session=True)
+    profile = subprocess.check_output(['powerprofilesctl', 'get']).decode().strip('\n')
+    if profile == 'balanced':
+        subprocess.Popen(['picom'], start_new_session=True)
 
     os.putenv('GTK_IM_MODULE', 'ibus')
     os.putenv('QT_IM_MODULE', 'ibus')
     os.putenv('XMODIFIERS', '@im=ibus')
     subprocess.call(['ibus-daemon', '-dxrR'])
+    subprocess.call(['setxkbmap', '-option', 'caps:none'])
 
+
+@hook.subscribe.startup
+def startup():
     subprocess.call(f'echo "Xcursor.theme: {CURSOR_THEME}" | xrdb -merge', shell=True)
     subprocess.call(['xsetroot', '-cursor_name', 'left_ptr'])  # default cursor
 
     input_update(qtile)
-
-
-# @hook.subscribe.startup_complete
-# def startup_complete():
-#     qtile.widget['ibus'].update()
-#     qtile.widget['volume'].update()
 
 
 @hook.subscribe.screens_reconfigured
