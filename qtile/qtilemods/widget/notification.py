@@ -32,14 +32,17 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
         await notifier.register(self.on_notification, {'body'}, on_close=self.on_close)
 
     def on_notification(self, notification):
-        logger.warning(notification)
-        logger.warning(notification.id)
-        logger.warning(notification.app_name)
-        logger.warning(notification.body)
+        logger.warning('notification', notification)
+        logger.warning('notification.id', notification.id)
+        logger.warning('notification.app_name', notification.app_name)
+        logger.warning('notification.body', notification.body)
+
         if 'sender-pid' in notification.hints:
-            logger.warning(notification.hints.get('sender-pid').value)
+            logger.warning('notification[sender-pid]',
+                           notification.hints.get('sender-pid').value)
         if 'desktop-entry' in notification.hints:
-            logger.warning(notification.hints.get('desktop-entry').value)
+            logger.warning('notification[desktop-entry]',
+                           notification.hints.get('desktop-entry').value)
 
         text = pangocffi.markup_escape_text(notification.body or notification.summary)
         self.qtile.call_soon_threadsafe(self.update, text)
@@ -121,5 +124,8 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
         self.drawer.draw(offsetx=self.offset, offsety=self.offsety, width=self.width)
 
     def finalize(self):
+        if notifier is None:
+            return
+
         notifier.unregister(self.update)
         super().finalize()
