@@ -20,13 +20,14 @@ class App(object):
 
 
 class PinnedApp(App):
-    def __init__(self, desktop, icon, cmd):
+    def __init__(self, desktop, name, icon, cmd):
         self.desktop = desktop
+        self.name = name
         self.icon = icon
         self.cmd = cmd
 
     def clone(self):
-        return PinnedApp(desktop=self.desktop, icon=self.icon, cmd=self.cmd)
+        return PinnedApp(desktop=self.desktop, name=self.name, icon=self.icon, cmd=self.cmd)
 
     def matches_window(self, window):
         win_classes = window.get_wm_class() or []
@@ -38,6 +39,9 @@ class PinnedApp(App):
             return True
 
         for cl in win_classes:
+            if self.name.lower() == cl.lower():
+                return True
+
             if self.get_name().lower().startswith(cl.lower()):
                 return True
 
@@ -97,8 +101,8 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
                 surface = self.get_flatpak_icon(pinned_name, desktop)
                 if surface:
                     app = PinnedApp(
-                        desktop=desktop, icon=surface,
-                        cmd=f'flatpak run {pinned_name}')
+                        desktop=desktop, name=pinned_name,
+                        icon=surface, cmd=f'flatpak run {pinned_name}')
                     self.pinned.append(app)
 
             else:
@@ -113,7 +117,9 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
                         cmd = desktop['Desktop Entry']['Exec']
                         cmd = re.sub(r'%[A-Za-z]', '', cmd)
                         surface = self.get_icon_surface(icon, self.icon_size)
-                        app = PinnedApp(desktop=desktop, icon=surface, cmd=cmd)
+                        app = PinnedApp(
+                            desktop=desktop, name=pinned_name,
+                            icon=surface, cmd=cmd)
                         self.pinned.append(app)
 
                     break
@@ -310,7 +316,7 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
 
             w = app.window
             if w:
-                if w.urgent:
+                if w.urgent and not task:
                     # border = self.urgent_border
                     task = '!'
                 elif w is w.group.current_window:
