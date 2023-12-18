@@ -43,6 +43,8 @@ class IBUSBackend(_BaseLayoutBackend):
             if 'us' not in layouts:
                 layouts.append('us')
             command = ['setxkbmap', '-layout', ','.join(layouts)]
+            if options:
+                command += ['-option', options]
             try:
                 check_output(command)
             except CalledProcessError:
