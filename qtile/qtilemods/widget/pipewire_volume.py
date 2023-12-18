@@ -9,67 +9,44 @@ from libqtile.log_utils import logger
 from libqtile.widget import base
 
 from .mixins import IconTextMixin
+from ..icon_theme import get_icon_path
 
 
 class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
+    """Widget that display and change volume
+
+    This widget uses ``wpctl`` to get and set the volume so users
+    will need to make sure this is installed.
+
+    If theme_path is set it draw widget as icons.
+    """
     orientations = base.ORIENTATION_HORIZONTAL
     defaults = [
-        ("cardid", None, "Card Id"),
-        ("device", "default", "Device Name"),
-        ("channel", "Master", "Channel"),
+        ("channel", "@DEFAULT_AUDIO_SINK@", "Channel"),
+        ("media_class", "Audio/Sink", "Channel's media class"),
         ("padding", 3, "Padding left and right. Calculated if None."),
         ("update_interval", 0.2, "Update time in seconds."),
         ("theme_path", None, "Path of the icons"),
-        (
-            "emoji",
-            False,
-            "Use emoji to display volume states, only if ``theme_path`` is not set."
-            "The specified font needs to contain the correct unicode characters.",
-        ),
-        ("mute_command", None, "Mute command"),
-        ("volume_app", None, "App to control volume"),
-        ("volume_up_command", None, "Volume up command"),
-        ("volume_down_command", None, "Volume down command"),
-        (
-            "get_volume_command",
-            None,
-            "Command to get the current volume. "
-            "The expected output should include 1-3 numbers and a ``%`` sign.",
-        ),
-        ("check_mute_command", None, "Command to check mute status"),
-        (
-            "check_mute_string",
-            "[off]",
-            "String expected from check_mute_command when volume is muted."
-            "When the output of the command matches this string, the"
-            "audio source is treated as muted.",
-        ),
-        (
-            "step",
-            2,
-            "Volume change for up an down commands in percentage."
-            "Only used if ``volume_up_command`` and ``volume_down_command`` are not set.",
-        ),
+        ("step", 2, "Volume change for up an down commands in percentage."),
     ]
 
     icon_names = (
-        'audio-volume-high-symbolic',
-        'audio-volume-medium-symbolic',
-        'audio-volume-low-symbolic',
-        'audio-volume-muted-symbolic',
+        (0, 'audio-volume-muted-symbolic'),
+        (33, 'audio-volume-low-symbolic'),
+        (66, 'audio-volume-medium-symbolic'),
+        (100, 'audio-volume-high-symbolic'),
     )
 
     def __init__(self, **config):
         base.InLoopPollText.__init__(self, **config)
         self.add_defaults(PipewireVolume.defaults)
-        self.volume = 0
 
-        # self.foreground = config.get('foreground', '#ffffff')
         self.icon_ext = config.get('icon_ext', '.png')
         self.icon_size = config.get('icon_size', 0)
         self.icon_spacing = config.get('icon_spacing', 0)
         self.images = {}
-        self.current_icon = 'audio-volume-muted-symbolic'
+        self.volume = 0
+        self.current_icon = self.icon_names[0][1]
 
         self.add_callbacks({
             'Button1': self.mute,
@@ -80,9 +57,6 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         })
 
         self.add_defaults(base.PaddingMixin.defaults)
-        self.channel = config.get('channel', '@DEFAULT_AUDIO_SINK@')
-        self.media_class = 'Audio/Sink'
-        self.check_mute_string = config.get('check_mute_string', '[MUTED]')
 
     def _configure(self, qtile, pbar):
         if self.theme_path:
@@ -91,45 +65,38 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         base.ThreadPoolText._configure(self, qtile, pbar)
         self.setup_images()
 
-    def calculate_length(self):
-        return (
-            super().calculate_length() +
-            self.icon_size + self.icon_spacing)
-
-    def create_command(self, *args):
-        cmd = ['wpctl']
-
-        for arg in args:
-            if arg.startswith('-'):
-                continue
-            elif arg == 'sget':
-                cmd.append('get-volume')
-            elif arg == 'sset':
-                if 'toggle' in args:
-                    cmd.append('set-mute')
+    def setup_images(self):
+        d_imgs = {}
+        for icon_level, icon_name in self.icon_names:
+            icon = get_icon_path(
+                icon_name, size=self.icon_size,
+                theme=self.theme_path, extensions=(self.icon_ext.lstrip('.'),))
+            if icon:
+                if icon.endswith('.svg'):  # symbolic icon
+                    with open(icon, 'r') as f:
+                        data = re.sub(r'fill="(#?[A-Za-z0-9]+)"', self._replace_svg_attr, f.read())
+                        d_imgs[icon_name] = images.Img(data.encode(), icon_name, icon)
                 else:
-                    cmd.append('set-volume')
-            else:
-                cmd.append(arg)
+                    with open(icon, 'rb') as f:
+                        d_imgs[icon_name] = images.Img(f.read(), icon_name, icon)
 
-        return subprocess.list2cmdline(cmd)
+        for key, img in d_imgs.items():
+            img.resize(height=self.icon_size)
+            if img.width > self.length:
+                self.length = img.width + self.padding_x * 2
+            self.images[key] = img
+
+    def calculate_length(self):
+        return self.icon_size + self.padding_x * 2
 
     def get_volume(self):
         try:
-            if self.get_volume_command is not None:
-                get_volume_cmd = self.get_volume_command
-            else:
-                get_volume_cmd = self.create_command('sget', self.channel)
-
-            mixer_out = subprocess.getoutput(get_volume_cmd)
+            cmd = subprocess.list2cmdline(['wpctl', 'get-volume', self.channel])
+            mixer_out = subprocess.getoutput(cmd)
         except subprocess.CalledProcessError:
             return -1
 
-        check_mute = mixer_out
-        if self.check_mute_command:
-            check_mute = subprocess.getoutput(self.check_mute_command)
-
-        if self.check_mute_string in check_mute:
+        if '[MUTED]' in mixer_out:
             return -1
 
         volgroups = mixer_out and mixer_out.split(' ')
@@ -143,32 +110,22 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         return int(float(volgroup) * 100)
 
     def get_icon_key(self, volume):
-        if volume <= 0:
-            mode = 'muted'
-        elif volume < 33:
-            mode = 'low'
-        elif volume < 66:
-            mode = 'medium'
-        else:
-            mode = 'high'
+        for icon_level, icon_name in self.icon_names:
+            if volume <= icon_level:
+                return icon_name
 
-        return f'audio-volume-{mode}-symbolic'
+        return self.icon_names[0][1]
 
     @expose_command()
     def increase_vol(self):
-        if self.volume < 0:
-            return
-
         if self.volume < 100:
-            if self.volume_up_command is not None:
-                volume_up_cmd = self.volume_up_command
-            else:
-                volume_up_cmd = self.create_command(
-                    "-q", "sset", self.channel, "{}%+".format(self.step)
-                )
-            subprocess.call(volume_up_cmd, shell=True)
+            value = '100%'
+            if self.volume + self.step < 100:
+                value = '{}%+'.format(self.step)
 
-        self.update(self.poll())
+            cmd = subprocess.list2cmdline(['wpctl', 'set-volume', self.channel, str(value)])
+            subprocess.call(cmd, shell=True)
+            self.update(self.poll())
 
         if self.volume >= 0:
             text = '{}%'.format(self.volume)
@@ -176,19 +133,14 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
 
     @expose_command()
     def decrease_vol(self):
-        if self.volume < 0:
-            return
-
         if self.volume > 0:
-            if self.volume_down_command is not None:
-                volume_down_cmd = self.volume_down_command
-            else:
-                volume_down_cmd = self.create_command(
-                    "-q", "sset", self.channel, "{}%-".format(self.step)
-                )
-            subprocess.call(volume_down_cmd, shell=True)
+            value = '0%'
+            if self.volume - self.step > 0:
+                value = '{}%-'.format(self.step)
 
-        self.update(self.poll())
+            cmd = subprocess.list2cmdline(['wpctl', 'set-volume', self.channel, str(value)])
+            subprocess.call(cmd, shell=True)
+            self.update(self.poll())
 
         if self.volume >= 0:
             text = '{}%'.format(self.volume)
@@ -196,12 +148,8 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
 
     @expose_command()
     def mute(self):
-        if self.mute_command is not None:
-            mute_cmd = self.mute_command
-        else:
-            mute_cmd = self.create_command("-q", "sset", self.channel, "toggle")
-        subprocess.call(mute_cmd, shell=True)
-
+        cmd = subprocess.list2cmdline(['wpctl', 'set-mute', self.channel, 'toggle'])
+        subprocess.call(cmd, shell=True)
         self.update(self.poll())
 
     @expose_command()
@@ -238,14 +186,15 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
             channel_id = 0
         channel = channels[channel_id]
 
-        subprocess.check_output([
-            'wpctl', 'set-default', str(channel['id'])])
+        subprocess.check_output(['wpctl', 'set-default', str(channel['id'])])
 
         props = channel.get('info', {}).get('props', {})
         desc = props.get('node.description')
         if len(desc) > 30:
             desc = desc[:30-3] + '...'
         qtile.widgets_map['notification'].update(desc)
+
+        self.update(self.poll())
 
     @expose_command()
     def run_app(self):
@@ -267,4 +216,22 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
 
             self.draw()
 
-        # self.timeout_add(self.update_interval, self.update)
+    def draw(self):
+        self.drawer.clear(self.background or self.bar.background)
+
+        if self.current_icon not in self.images:
+            return
+
+        image = self.images[self.current_icon]
+        self.drawer.ctx.save()
+        self.drawer.ctx.translate(self.padding_x, (self.bar.height - image.height) // 2)
+        self.drawer.ctx.set_source(image.pattern)
+        self.drawer.ctx.paint()
+        self.drawer.ctx.restore()
+
+        self.layout.draw(
+           self.padding_x + self.icon_size + self.icon_spacing,
+           (self.bar.height - self.layout.height) // 2 + 1,
+        )
+
+        self.drawer.draw(offsetx=self.offset, offsety=self.offsety, width=self.length)
