@@ -122,6 +122,8 @@ class AppMixin(object):
 
         for appid in os.listdir(flatpaks_path):
             apps_path = os.path.join(flatpaks_path, appid, 'current/active/files/share/applications')
+            if not os.path.isdir(apps_path):
+                continue
             for filename in os.listdir(apps_path):
                 if not filename.endswith('.desktop'):
                     continue
