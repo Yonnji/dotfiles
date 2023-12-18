@@ -26,6 +26,7 @@ class Workspaces(IconTextMixin, widget.GroupBox):
         'zoomy': 'zoom-fit-best-symbolic',
         # custom
         'stacking': 'multiple-events-symbolic',
+        'unmanaged': 'multiple-events-symbolic',
         'tiling': 'view-grid-symbolic',
     }
 
