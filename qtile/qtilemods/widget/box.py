@@ -17,6 +17,7 @@ class Box(IconTextMixin, base.PaddingMixin, widget.WidgetBox):
     )
 
     def __init__(self, **config):
+        self.layout = None
         # self.theme_path = config.get('theme_path', None)
         self.foreground = config.get('foreground', '#ffffff')
         self.icon_ext = config.get('icon_ext', '.png')
