@@ -82,7 +82,7 @@ class EntryCompleter(AppMixin, CommandCompleter):
 
         return lookup
 
-    def complete(self, txt):
+    def complete(self, txt, *args, **kwargs):
         if self.lookup is None:
             self.lookup = []
 
