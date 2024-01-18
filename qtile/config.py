@@ -56,9 +56,8 @@ else:
     TERMINAL = guess_terminal()
 DISPLAY_INTERNAL = 'eDP'
 DISPLAY_EXTERNAL = 'HDMI' if get_gpu() == 'AMD' else 'DP'
-QT_THEME = 'Adwaita'
-GTK_THEME = 'Yaru-magenta'
-ICON_THEME = 'Yaru-magenta'
+QT_THEME = 'kvantum'
+ICON_THEME = 'Yaru-Pink'
 CURSOR_THEME = 'Breeze_Light_Samurai'
 XDG_PORTALS = ['gnome', 'gtk', '']
 if IS_X11:
@@ -298,6 +297,7 @@ layouts = [Tiling(**TILING_CONFIG)]
 floating_layout = Stacking(
     float_rules=Stacking.default_float_rules + [
         Match(wm_class='Gthumb'),
+        Match(wm_class='KeePassXC'),
         Match(wm_class='org.gnome.Nautilus'),
         Match(wm_class='zoom'),
     ], **STACKING_CONFIG
@@ -309,6 +309,7 @@ workspaces = [
         layouts=[Unmanaged(**TILING_CONFIG)],
         matches=[
             Match(wm_class='discord'),
+            Match(wm_class='KeePassXC'),
         ],
     ),
 
@@ -368,20 +369,20 @@ workspaces = [
 ]
 groups.extend(workspaces)
 
-scratch = [
-    ScratchPad('scratchpad', [
-       DropDown(
-           'good',
-           'gnome-disks',
-           x=0,
-           y=0,
-           width=0.5,
-           height=0.5,
-           opacity=0.5,
-       ),
-    ]),
-]
-groups.extend(scratch)
+# scratch = [
+#     ScratchPad('scratchpad', [
+#        DropDown(
+#            'good',
+#            'gnome-disks',
+#            x=0,
+#            y=0,
+#            width=0.5,
+#            height=0.5,
+#            opacity=0.5,
+#        ),
+#     ]),
+# ]
+# groups.extend(scratch)
 
 extra_widgets = [
     DisplayLight(
@@ -641,10 +642,10 @@ keys = [
 
 # Screenshots
 keys += [
-    # Key([MOD_SHIFT], 'print', lazy.function(take_screenshot(area=True)),
-    #     desc='Save a screenshot of an area to Pictures'),
-    # Key([], 'print', lazy.function(take_screenshot()),
-    #     desc='Save a screenshot to Pictures'),
+    Key([MOD_SHIFT], 'print', lazy.function(take_screenshot(area=True)),
+        desc='Save a screenshot of an area to Pictures'),
+    Key([], 'print', lazy.function(take_screenshot()),
+        desc='Save a screenshot to Pictures'),
 ]
 
 # Sounds and Media
@@ -759,7 +760,6 @@ def startup():
         subprocess.call(['xsetroot', '-cursor_name', 'left_ptr'])  # default cursor
 
     os.putenv('GTK_CSD', '1')
-    # os.putenv('GTK_THEME', GTK_THEME)
     os.putenv('ICON_THEME', ICON_THEME)
     os.putenv('LANG', 'en_GB.UTF-8')
     os.putenv('MOZ_GTK_TITLEBAR_DECORATION', 'client')
