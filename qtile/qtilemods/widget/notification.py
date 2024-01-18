@@ -4,6 +4,17 @@ from libqtile.log_utils import logger
 from libqtile.notify import ClosedReason, notifier
 from libqtile.widget import base
 
+CAPABILITIES = {
+    'action-icons',
+    'actions',
+    'body',
+    'body-hyperlinks',
+    'body-images',
+    'body-markup',
+    'icon-multi',
+    'icon-static',
+}
+
 
 class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
     def __init__(self, **config):
@@ -29,7 +40,7 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
         if notifier is None:
             return
 
-        await notifier.register(self.on_notification, {'body'}, on_close=self.on_close)
+        await notifier.register(self.on_notification, CAPABILITIES, on_close=self.on_close)
 
     def on_notification(self, notification):
         logger.warning('notification', notification)
