@@ -11,6 +11,7 @@ def get_desktop_entry_path(appname):
         os.path.expanduser('~/.local/share/applications'),
         '/usr/local/share/applications',
         '/usr/share/applications',
+        '/var/lib/flatpak/exports/share/applications/',
     )
 
     # check if it has an extension and strip it
