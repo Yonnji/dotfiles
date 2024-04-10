@@ -12,6 +12,14 @@ from .mixins import IconTextMixin
 from ..icon_theme import get_icon_path
 
 
+ICON_NAMES = (
+    (0, 'audio-volume-muted-symbolic'),
+    (33, 'audio-volume-low-symbolic'),
+    (66, 'audio-volume-medium-symbolic'),
+    (100, 'audio-volume-high-symbolic'),
+)
+
+
 class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
     """Widget that display and change volume
 
@@ -28,14 +36,9 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         ("update_interval", 0.2, "Update time in seconds."),
         ("theme_path", None, "Path of the icons"),
         ("step", 2, "Volume change for up an down commands in percentage."),
+        ("icon_names", ICON_NAMES, "Icon names."),
     ]
 
-    icon_names = (
-        (0, 'audio-volume-muted-symbolic'),
-        (33, 'audio-volume-low-symbolic'),
-        (66, 'audio-volume-medium-symbolic'),
-        (100, 'audio-volume-high-symbolic'),
-    )
 
     def __init__(self, **config):
         base.InLoopPollText.__init__(self, **config)
@@ -44,6 +47,7 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         self.icon_ext = config.get('icon_ext', '.png')
         self.icon_size = config.get('icon_size', 0)
         self.icon_spacing = config.get('icon_spacing', 0)
+        self.icon_names = config.get('icon_names', ICON_NAMES)
         self.images = {}
         self.volume = 0
         self.current_icon = self.icon_names[0][1]
@@ -152,44 +156,90 @@ class PipewireVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         subprocess.call(cmd, shell=True)
         self.update(self.poll())
 
-    @expose_command()
-    def next_channel(self):
+    def _get_data(self):
         output = subprocess.check_output(['pw-dump', '--no-colors']).decode()
-        data = json.loads(output)
+        # merge multiple arrays to fix invalid json
+        output = output.replace(']\n[', ',')
+        return json.loads(output)
 
+    def _get_metadata(self, data):
         metadata = []
         for item in data:
             if item.get('type') == 'PipeWire:Interface:Metadata':
                 if item.get('props', {}).get('metadata.name') == 'default':
                     metadata = item.get('metadata', [])
 
-        channel_metadata = {}
-        key = 'default.{}'.format(self.media_class.replace('/', '.').lower())
-        for option in metadata:
-            if option.get('key') == key:
-                channel_metadata = option.get('value')
+        return metadata
 
-        channel_id = None
+    def _get_current_channel_name(self, data):
+        key = 'default.{}'.format(self.media_class.replace('/', '.').lower())
+        for option in self._get_metadata(data):
+            if option.get('key') == key:
+                return option.get('value', {}).get('name')
+
+    def _get_current_channel(self, data):
+        current_channel_name = self._get_current_channel_name(data)
+        for item in data:
+            if not item.get('info'):
+                continue
+
+            props = item['info'].get('props', {})
+            if props.get('media.class') != self.media_class:
+                continue
+
+            name = props.get('node.name')
+            if name == current_channel_name:
+                return item
+
+    @expose_command()
+    def next_channel(self):
+        data = self._get_data()
+        current_channel = self._get_current_channel(data)
+
+        current_channel_index = None
         channels = []
         for item in data:
-            props = item.get('info', {}).get('props', {})
-            if props.get('media.class') == self.media_class:
-                channels.append(item)
-                if channel_metadata and channel_metadata.get('name') == props.get('node.name'):
-                    channel_id = len(channels) - 1
+            if not item.get('info'):
+                continue
 
-        if channel_id is None:
+            props = item['info'].get('props', {})
+            if props.get('media.class') != self.media_class:
+                continue
+
+            if item['id'] == current_channel['id']:
+                current_channel_index = len(channels)
+
+            channels.append(item)
+
+        if current_channel_index is None:
             return
 
-        channel_id += 1
-        if channel_id >= len(channels):
-            channel_id = 0
-        channel = channels[channel_id]
+        for _ in range(len(channels)):
+            current_channel_index += 1
+            if current_channel_index >= len(channels):
+                current_channel_index = 0
 
-        subprocess.check_output(['wpctl', 'set-default', str(channel['id'])])
+            new_channel = channels[current_channel_index]
+            new_props = new_channel.get('info', {}).get('props', {})
+            new_id = str(new_channel['id'])
+            new_name = new_props.get('node.name')
+            logger.error(f'Switching to "{new_id}. {new_name}"')
+            cmd = ['wpctl', 'set-default', new_id]
+            logger.error(' '.join(cmd))
+            subprocess.check_output(cmd)
 
-        props = channel.get('info', {}).get('props', {})
+            data = self._get_data()
+            current_channel = self._get_current_channel(data)
+            if new_channel['id'] == current_channel['id']:
+                break
+            else:
+                logger.error(f'Cannot switch to "{new_id}. {new_name}"')
+        else:
+            return
+
+        props = current_channel.get('info', {}).get('props', {})
         desc = props.get('node.description')
+        desc = desc.replace('Audio Controller', '')
         if len(desc) > 30:
             desc = desc[:30-3] + '...'
         qtile.widgets_map['notification'].update(desc)

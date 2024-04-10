@@ -2,6 +2,7 @@ from libqtile.log_utils import logger
 
 import json
 import os
+import re
 import subprocess
 
 
@@ -27,7 +28,10 @@ def _randr_query():
                 modes[output] = {}
 
             if IS_X11:
-                mode, *refreshes = filter(None, line.split(' '))
+                mode, *refreshes = filter(None, line.strip().split(' '))
+                if not re.match(r'\d+x\d+', mode):
+                    continue
+
                 for refresh in refreshes:
                     if mode not in modes[output]:
                         modes[output][mode] = []
@@ -48,6 +52,8 @@ def _randr_query():
             continue
 
         else:
+            if 'disconnected' in line:
+                continue
             output = line.split(' ')[0]
 
     return modes
@@ -55,7 +61,7 @@ def _randr_query():
 
 def _get_output(modes, output):
     for output_preset in modes:
-        if output in output_preset:
+        if re.match(r'{}(-[0-9A-Z])+'.format(output), output_preset):
             return output_preset
     return output
 
@@ -64,8 +70,11 @@ def _get_refresh(modes, output, mode, refresh):
     if output in modes:
         if mode in modes[output]:
             for refresh_preset in modes[output][mode]:
-                if round(float(refresh)) == round(float(refresh_preset)):
-                    return refresh_preset
+                try:
+                    if round(float(refresh)) == round(float(refresh_preset)):
+                        return refresh_preset
+                except ValueError:
+                    pass
     return refresh
 
 

@@ -1,9 +1,3 @@
-import os
-
-from functools import partial
-
-from libqtile.widget.backlight import ChangeDirection
-
 from .displaylight import DisplayLight
 
 

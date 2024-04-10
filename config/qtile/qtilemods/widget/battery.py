@@ -1,7 +1,7 @@
 import re
 import os
 
-from libqtile import widget, images
+from libqtile import widget, images, qtile
 from libqtile.widget import base
 from libqtile.log_utils import logger
 
@@ -50,8 +50,8 @@ class Battery(IconTextMixin, widget.Battery):
         self.padding_y = config.get('padding_y') or self.padding
         super().__init__(**config)
 
-    def _configure(self, qtile, bar):
-        super()._configure(qtile, bar)
+    def _configure(self, qtile_, bar_):
+        super()._configure(qtile_, bar_)
         self.setup_images()
 
     def get_icon_key(self, status):
@@ -94,3 +94,15 @@ class Battery(IconTextMixin, widget.Battery):
                 self.draw()
             else:
                 self.bar.draw()
+
+        images = []
+        for (prefix, dirs, files) in os.walk(os.path.expanduser('~/Pictures/Slideshow')):
+            for image in files:
+                if image.endswith('.png') or image.endswith('.jpg') or image.endswith('.jpeg'):
+                    images.append(os.path.join(prefix, image))
+
+        if not hasattr(self, 'image_index'):
+            self.image_index = 0
+        for screen in qtile.screens:
+            screen.paint(images[self.image_index], 'fill')
+        self.image_index = self.image_index + 1 if self.image_index < len(images) - 1 else 0

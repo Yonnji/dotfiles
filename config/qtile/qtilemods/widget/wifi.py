@@ -62,6 +62,11 @@ class Wifi(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
         self.setup_images()
 
     def get_icon_key(self, signal):
+        secure = False
+        if signal > 1000:
+            signal -= 1000
+            secure = True
+
         if signal <= -3:
             return 'network-wireless-hardware-disabled-symbolic'
         elif signal <= -2:
@@ -79,7 +84,10 @@ class Wifi(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
         else:
             strength = 'excellent'
 
-        return f'network-wireless-signal-{strength}-symbolic'
+        if secure:
+            return f'network-wireless-signal-{strength}-secure-symbolic'
+        else:
+            return f'network-wireless-signal-{strength}-symbolic'
 
     def calculate_length(self):
         return (
@@ -99,12 +107,26 @@ class Wifi(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
             elif dev['type'] == 'wlan' and dev['soft'] == 'blocked':
                 return -2
 
+        signal = 0
         out = subprocess.check_output(['nmcli', '-f', 'IN-USE,SIGNAL', 'd', 'wifi']).decode()
         for line in out.split('\n'):
             if line.strip().startswith('*'):
-                return int(line.strip().lstrip('*'))
+                signal = int(line.strip().lstrip('*'))
+                break
+        else:
+            return -1
 
-        return -1
+        secure = False
+        out = subprocess.check_output(['nmcli', '-f', 'TYPE', 'c', 'show', '--active']).decode()
+        for line in out.split('\n'):
+            if line.strip() == 'vpn':
+                secure = True
+                break
+
+        if secure:
+            signal += 1000
+
+        return signal
 
     def poll(self):
         return self.get_signal()

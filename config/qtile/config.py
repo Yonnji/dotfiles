@@ -10,13 +10,16 @@ from libqtile import bar, layout, widget, hook, qtile
 from libqtile.config import (
     Drag, DropDown, Group, Key, Match, Screen, ScratchPad)
 from libqtile.lazy import lazy
-from libqtile.utils import guess_terminal
 from libqtile.log_utils import logger
 
 sys.path.append(os.path.dirname(__file__))
 
 from qtilemods.layout.stacking import Stacking, Unmanaged
 from qtilemods.layout.tiling import Tiling
+from qtilemods.tools.gtk import set_gtk_settings
+from qtilemods.tools.portal import portals_start, portals_stop
+from qtilemods.tools.randr import randr
+from qtilemods.tools.xrdb import xrdb_merge
 from qtilemods.widget.battery import Battery
 from qtilemods.widget.bluetooth import Bluetooth
 from qtilemods.widget.box import Box
@@ -25,47 +28,23 @@ from qtilemods.widget.dock import Dock
 from qtilemods.widget.entry import Entry
 from qtilemods.widget.ibus import IBUS
 from qtilemods.widget.keyboardlight import KeyboardLight
-from qtilemods.widget.power import Power
+from qtilemods.widget.notification import Notification
 from qtilemods.widget.pipewire_volume import PipewireVolume
+from qtilemods.widget.power import Power
 from qtilemods.widget.volumemic import VolumeMic
 from qtilemods.widget.wifi import Wifi
 from qtilemods.widget.workspaces import Workspaces
-from qtilemods.widget.notification import Notification
-from qtilemods.tools.randr import randr
 
 
 IS_X11 = os.getenv('XDG_SESSION_TYPE').lower() == 'x11'
-
-
-def get_gpu():
-    if not IS_X11:
-        return 'AMD'
-
-    lines = subprocess.check_output(['glxinfo']).decode()
-    for line in lines.split('\n'):
-        if line.startswith('OpenGL renderer string:'):
-            if 'AMD' in line:
-                return 'AMD'
-            elif 'NVIDIA' in line:
-                return 'NVIDIA'
-
-
-if os.path.exists('/usr/bin/kitty'):
-    TERMINAL = 'kitty'
-else:
-    TERMINAL = guess_terminal()
 DISPLAY_INTERNAL = 'eDP'
-DISPLAY_EXTERNAL = 'HDMI' if get_gpu() == 'AMD' else 'DP'
+DISPLAY_EXTERNAL = 'DP'
+GTK_THEME = 'Catppuccin-Latte-Standard-Pink-Light'
 QT_THEME = 'kvantum'
 ICON_THEME = 'Yaru-Pink'
-CURSOR_THEME = 'Breeze_Light_Samurai'
-XDG_PORTALS = ['gnome', 'gtk', '']
-if IS_X11:
-    XDG_PORTALS.append('wlr')
-WALLPAPER_CONFIG = {
-    'wallpaper': os.path.expanduser('~/Pictures/Wallpaper.png'),
-    'wallpaper_mode': 'fill',
-}
+# CURSOR_THEME = 'Breeze_Light_Samurai'
+CURSOR_THEME = 'Breeze_Light'
+CURSOR_SIZE = 24
 ACCENT_COLOR_A = '#E91E63'
 ACCENT_COLOR_B = '#2196F3'
 STACKING_CONFIG = {
@@ -165,24 +144,30 @@ def input_update(qtile):
                 for button, action in bindings.items():
                     subprocess.call(['xsetwacom', '--set', str(id_), 'Button', button] + list(action))
 
-    # subprocess.call(['xmodmap', '-e', 'remove Lock = Caps_Lock'])
-    # subprocess.call(['xmodmap', '-e', 'keysym Caps_Lock = F13'])
+    qtile.widgets_map['notification'].update('Input devices updated')
 
 
-def display_autoconfig(qtile):
-    external = {
-        'output': DISPLAY_EXTERNAL,
-        'mode': '1920x1080',
-        'refresh': '240',
-        'primary': True,
-    }
-    randr(**external)
+def display_single(qtile):
+    randr(output=DISPLAY_EXTERNAL, off=True)
 
     internal = {
         'output': DISPLAY_INTERNAL,
-        'mode': '1920x1080',
-        'refresh': '60',
+        'mode': '2880x1800',
+        'refresh': '120',
     }
+    randr(**internal)
+    remap_screens(qtile)
+
+
+def display_double(qtile):
+    external = {
+        'output': DISPLAY_EXTERNAL,
+        'mode': '1920x1080',
+        'refresh': '144',
+        'primary': True,
+    }
+    randr(auto=True)
+    randr(**external)
 
     location = 'left-of'
     if os.path.isdir('/sys/class/drm'):
@@ -192,31 +177,14 @@ def display_autoconfig(qtile):
                 data = open(edid, 'rb').read()
                 if contains(data, b'S2522', b'SONY TV'):
                     location = 'below'
+
+    internal = {
+        'output': DISPLAY_INTERNAL,
+        'mode': '2880x1800',
+        'refresh': '120',
+    }
     internal[location] = DISPLAY_EXTERNAL
-
     randr(**internal)
-
-    internal['refresh'] = '144'
-    randr(**internal)
-
-
-def display_toggle(qtile):
-    if IS_X11:
-        cmd = ['xrandr', '--listactivemonitors']
-    else:
-        cmd = ['wlr-randr']
-    lines = subprocess.check_output(cmd).decode()
-
-    have_external = False
-    for line in lines.split('\n'):
-        if DISPLAY_EXTERNAL in line:
-            have_external = True
-            break
-
-    if have_external:
-        randr(output=DISPLAY_EXTERNAL, off=True)
-    else:
-        display_autoconfig(qtile)
     remap_screens(qtile)
 
 
@@ -227,8 +195,8 @@ def audio_toggle(qtile):
     subprocess.Popen([os.path.expanduser('~/audio_toggle.sh'), state])
 
 
-def audio_activate(qtile):
-    subprocess.Popen([os.path.expanduser('~/audio_activate.sh')])
+def audio_play(qtile):
+    subprocess.Popen([os.path.expanduser('~/audio_play.sh')])
 
 
 def next_screen(qtile):
@@ -279,16 +247,19 @@ if not IS_X11:
     # qtile cmd-obj -o core -f get_inputs
     wl_input_rules.update({
         'type:touchpad': InputConfig(
-            tap=True,
+            accel_profile='flat',
             natural_scroll=True,
+            pointer_accel=0,
             scroll_method='two_finger',
+            tap=True,
         ),
         'type:pointer': InputConfig(
-            pointer_accel=False,
+            accel_profile='flat',
+            pointer_accel=0,
         ),
         'type:keyboard': InputConfig(
             kb_layout='us,ru',
-            kb_options='caps:none',
+            kb_options='caps:none grp:win_space_toggle',
         ),
     })
 
@@ -296,10 +267,11 @@ groups = []
 layouts = [Tiling(**TILING_CONFIG)]
 floating_layout = Stacking(
     float_rules=Stacking.default_float_rules + [
-        Match(wm_class='Gthumb'),
         Match(wm_class='KeePassXC'),
+        Match(wm_class='file-roller'),
         Match(wm_class='org.gnome.Nautilus'),
         Match(wm_class='zoom'),
+        Match(wm_class='zoom.real '),
     ], **STACKING_CONFIG
 )
 
@@ -318,6 +290,7 @@ workspaces = [
         layouts=[Tiling(**TILING_CONFIG)],
         matches=[
             Match(wm_class='Emacs'),
+            Match(wm_class='Emacs-gtk+x11'),
         ],
     ),
 
@@ -349,7 +322,6 @@ workspaces = [
             Match(wm_class='NVIDIA Nsight Graphics'),
             Match(wm_class='Substance Designer'),
             Match(wm_class='Unity'),
-            Match(wm_class='Waveform'),
             Match(wm_class='kdenlive'),
             Match(wm_class='krita'),
             Match(wm_class='maya.bin'),
@@ -369,20 +341,29 @@ workspaces = [
 ]
 groups.extend(workspaces)
 
-# scratch = [
-#     ScratchPad('scratchpad', [
-#        DropDown(
-#            'good',
-#            'gnome-disks',
-#            x=0,
-#            y=0,
-#            width=0.5,
-#            height=0.5,
-#            opacity=0.5,
-#        ),
-#     ]),
-# ]
-# groups.extend(scratch)
+scratch = [
+    ScratchPad('scratchpad', [
+       DropDown(
+           'megasync',
+           'flatpak run nz.mega.MEGAsync',
+           x=0,
+           y=0,
+           width=0.1,
+           height=0.1,
+           opacity=1.0,
+       ),
+       DropDown(
+           'kitty',
+           'kitty',
+           x=0.1,
+           y=0,
+           width=0.8,
+           height=0.9,
+           opacity=1.0,
+       ),
+    ]),
+]
+groups.extend(scratch)
 
 extra_widgets = [
     DisplayLight(
@@ -392,20 +373,9 @@ extra_widgets = [
         icon_size=16,
         icon_spacing=2,
         update_interval=15,
-        backlight_name='amdgpu_bl1',
-        change_command='brightnessctl -d amdgpu_bl1 set {0}',
-        step=16,
-    ),
-    KeyboardLight(
-        foreground='#ffffff',
-        theme_path=ICON_THEME,
-        icon_ext='.svg',
-        icon_size=16,
-        icon_spacing=2,
-        update_interval=15,
-        backlight_name='asus::kbd_backlight',
-        change_command='brightnessctl -d asus::kbd_backlight set {0}',
-        step=1,
+        backlight_name='intel_backlight',
+        change_command='brightnessctl -d intel_backlight set {0}',
+        step=20,
     ),
 ]
 
@@ -421,6 +391,10 @@ if IS_X11:
     )
 
 extra_widgets += [
+    widget.ThermalSensor(
+        tag_sensor='Package id 0',
+        threshold=110,
+    ),
     VolumeMic(
         foreground='#ffffff',
         theme_path=ICON_THEME,
@@ -429,6 +403,12 @@ extra_widgets += [
         icon_ext='.svg',
         icon_size=16,
         update_interval=15,
+        icon_names=(
+            (0, 'microphone-sensitivity-muted-symbolic'),
+            (33, 'microphone-sensitivity-low-symbolic'),
+            (66, 'microphone-sensitivity-medium-symbolic'),
+            (100, 'microphone-sensitivity-high-symbolic'),
+        ),
     ),
 ]
 
@@ -455,6 +435,8 @@ widgets = [
     ),
     Dock(
         pinned_apps=(
+            'rofi-launcher',
+            'org.mozilla.firefox',
             'firefox',
             'firefox-aurora',
             'org.mozilla.Thunderbird',
@@ -464,11 +446,7 @@ widgets = [
             'discord_local',
             'com.slack.Slack',
             'org.telegram.desktop',
-            'org.blender.Blender',
-            'org.videolan.vlc',
-            'com.valvesoftware.Steam',
             'org.keepassxc.KeePassXC',
-            'com.cisco.anyconnect.gui',
         ),
         padding=4,
         icon_size=32,
@@ -575,6 +553,7 @@ widgets += [
         icon_spacing=2,
         format='{percent:2.0%}',
         padding=12,
+        update_interval=60 * 5,
     ),
     widget.Clock(format="%d %b %H:%M"),
 ]
@@ -588,10 +567,9 @@ screens = [
             margin=0,
             background="#00000080",
         ),
-        **WALLPAPER_CONFIG
     ),
-
-    Screen(**WALLPAPER_CONFIG)
+    Screen(),
+    # Screen(**WALLPAPER_CONFIG),
 ]
 # if not IS_X11:
 #     screens.reverse()
@@ -605,9 +583,10 @@ keys = [
         desc='Move to previous workspace'),
     Key([MOD_CONTROL, MOD_ALT], 'left', lazy.screen.prev_group(),
         desc='Move to previous workspace'),
-    Key([MOD_CONTROL, MOD_ALT], 'down',
-       lazy.group['scratchpad'].dropdown_toggle('good'),
-       desc=''),
+    # Key([MOD_SUPER], 'm', lazy.group['scratchpad'].dropdown_toggle('megasync'),
+    #    desc='MEGASYNC'),
+    # Key([MOD_CONTROL], 'grave', lazy.group['scratchpad'].dropdown_toggle('kitty'),
+    #    desc='Kitty'),
 
     Key([MOD_SUPER], 'page_down', lazy.screen.next_group(),
         desc='Move to next workspace'),
@@ -642,43 +621,45 @@ keys = [
 
 # Screenshots
 keys += [
-    Key([MOD_SHIFT], 'print', lazy.function(take_screenshot(area=True)),
-        desc='Save a screenshot of an area to Pictures'),
     Key([], 'print', lazy.function(take_screenshot()),
         desc='Save a screenshot to Pictures'),
+    Key([MOD_SHIFT, MOD_SUPER], 's', lazy.function(take_screenshot(area=True)),
+        desc='Save a screenshot of an area to Pictures'),
 ]
 
 # Sounds and Media
 keys += [
     Key([], 'XF86AudioLowerVolume', lazy.widget['pipewirevolume'].decrease_vol(), desc='Volume down'),
-    Key([], 'XF86AudioMute', lazy.widget['pipewirevolume'].mute(), desc='Volume mute'),
     Key([], 'XF86AudioRaiseVolume', lazy.widget['pipewirevolume'].increase_vol(), desc='Volume up'),
-    # Key([], 'XF86AudioMicMute', lazy.widget['volumemic'].mute(), desc='Mic mute'),
-    Key([], 'XF86AudioMicMute', lazy.function(audio_toggle, desc='Mic mute')),
+    Key([], 'XF86AudioMute', lazy.widget['pipewirevolume'].mute(), desc='Volume mute'),
+    Key([], 'XF86AudioMicMute', lazy.function(audio_toggle), desc='Mic mute'),
+    Key([], 'XF86AudioPlay', lazy.function(audio_play), desc='Play'),
 ]
 
 # System
 keys += [
-    Key([MOD_CONTROL, MOD_ALT], 'delete', lazy.shutdown(), desc='Log out'),
-    # Key([MOD_SUPER], 'v', lazy.widget['box'].toggle(), desc='Show/hide the widgets box'),
+    Key([MOD_CONTROL, MOD_ALT], 'delete', lazy.spawn('systemctl poweroff'), desc='Shutdown'),
+    Key([MOD_CONTROL, MOD_ALT], 'backspace', lazy.shutdown(), desc='Log out'),
+    Key([MOD_SUPER], 'v', lazy.widget['box'].toggle(), desc='Show/hide the widgets box'),
     Key([MOD_ALT], 'F2', lazy.spawncmd(prompt='> ', widget='entry', complete='entry'),
         desc='Show the run command prompt'),
     Key([MOD_SUPER], 'r', lazy.spawncmd(prompt='> ', widget='entry', complete='entry'),
         desc='Show the run command prompt'),
+    Key([MOD_SUPER], 'a', lazy.spawn('rofi -show drun'), desc='Show the list of applications'),
+    Key([MOD_CONTROL], 'escape', lazy.spawn('rofi -show drun'), desc='Show the list of applications'),
+    Key([MOD_ALT], 'F1', lazy.spawn('rofi -show window'), desc='Show the list of windows'),
 
-    Key([], 'XF86KbdBrightnessUp', lazy.widget['keyboardlight'].change_backlight(ChangeDirection.UP)),
-    Key([], 'XF86KbdBrightnessDown', lazy.widget['keyboardlight'].change_backlight(ChangeDirection.DOWN)),
     Key([], 'XF86MonBrightnessUp', lazy.widget['displaylight'].change_backlight(ChangeDirection.UP)),
     Key([], 'XF86MonBrightnessDown', lazy.widget['displaylight'].change_backlight(ChangeDirection.DOWN)),
-    Key([MOD_SUPER], 'p', lazy.function(display_toggle)),
-    Key([], 'XF86Launch1', lazy.function(audio_activate), desc='ROG button'),
-    Key([], 'XF86Launch3', lazy.spawn('asusctl led-mode -n'), desc='AURA button'),
     Key([], 'XF86TouchpadToggle', lazy.function(input_update)),
+    Key([], 'XF86Bluetooth', lazy.widget['bluetooth'].block(), desc='Toggle Bluetooth'),
+    Key([MOD_SUPER], 'p', lazy.function(display_double), 'Display toggle'),
+    Key([], 'XF86RotateWindows', lazy.function(display_single), desc='Rotate button'),
 ]
 
 if IS_X11:
     keys += [
-        Key([], 'XF86Launch4', lazy.widget['power'].switch(), desc='FAN button'),
+        Key([], 'XF86Reload', lazy.widget['power'].switch(), desc='Target button'),
     ]
 
 # Typing
@@ -687,7 +668,7 @@ if IS_X11:
         Key([MOD_CONTROL], 'space', lazy.widget['ibus'].next_keyboard(),
             desc='Switch to next input source'),
         Key([MOD_CONTROL, MOD_SHIFT], 'space', lazy.widget['ibus'].prev_keyboard(),
-            desc='Switch to next input source'),
+            desc='Switch to previous input source'),
         Key([MOD_SUPER], 'space', lazy.widget['ibus'].toggle_keyboard(),
             desc='Toggle between last input sources'),
     ]
@@ -696,6 +677,9 @@ if IS_X11:
 keys += [
     Key([MOD_ALT], 'F4', lazy.window.kill(), desc='Close window'),
     Key([MOD_SUPER], 'H', lazy.window.toggle_minimize(), desc='Toggle minimization state'),
+    Key([MOD_ALT], 'F7', lazy.window.move_to_bottom(), desc='Move window to bottom'),
+    Key([MOD_ALT], 'F8', lazy.window.move_to_top(), desc='Move window to top'),
+    Key([MOD_ALT], 'F9', lazy.window.toggle_minimize(), desc='Toggle minimization state'),
     Key([MOD_ALT], 'F10', lazy.window.toggle_maximize(), desc='Toggle maximization state'),
     Key([MOD_ALT], 'F11', lazy.window.toggle_fullscreen(), desc='Toggle fullscreen state'),
 ]
@@ -706,7 +690,7 @@ keys += [
     Key([MOD_SUPER], 'f', lazy.window.toggle_floating(), desc='Toggle floating'),
     Key([MOD_CONTROL, MOD_SUPER], 'r', lazy.reload_config(), desc='Reload configuration'),
     Key([MOD_CONTROL, MOD_SUPER], 'F5', lazy.reload_config(), desc='Reload configuration'),
-    Key([MOD_SUPER], 'l', lazy.function(spawn_later('xset dpms force off', 0.25)), desc='Turn off the displays'),
+    Key([MOD_SUPER], 'l', lazy.spawn('xsecurelock -- systemctl suspend'), desc='Suspend'),
 ]
 
 mouse = [
@@ -723,8 +707,8 @@ mouse = [
 
 @hook.subscribe.startup_once
 def startup_once():
-    display_autoconfig(qtile)
-    remap_screens(qtile)
+    if IS_X11:
+        display_double(qtile)
 
     os.putenv('GTK_IM_MODULE', 'ibus')
     os.putenv('QT_IM_MODULE', 'ibus')
@@ -736,28 +720,30 @@ def startup_once():
             subprocess.Popen(['picom'], start_new_session=True)
     subprocess.call(['ibus-daemon', '-dxrR'])
 
-    env = dict(os.environ)
-    env.update({
-        'XDG_SESSION_DESKTOP': 'gnome',
-        'XDG_CURRENT_DESKTOP': 'gnome',
-    })
-
-    for portal in XDG_PORTALS:
-        path = list(filter(None, ['/usr/libexec/xdg-desktop-portal', portal]))
-        subprocess.Popen(['-'.join(path), '-vr'], start_new_session=True, env=env)
+    portals_start()
 
 
 @hook.subscribe.startup
 def startup():
     if IS_X11:
-        subprocess.call(f'echo "Xcursor.theme: {CURSOR_THEME}" | xrdb -merge', shell=True)
-        subprocess.call('echo "Xft.antialias: 1" | xrdb -merge', shell=True)
-        subprocess.call('echo "Xft.hinting: 0" | xrdb -merge', shell=True)
-        subprocess.call('echo "Xft.hintstyle: hintnone" | xrdb -merge', shell=True)
-        subprocess.call('echo "Xft.lcdfilter: lcddefault" | xrdb -merge', shell=True)
-        subprocess.call('echo "Xft.rgba: rgb" | xrdb -merge', shell=True)
-        subprocess.call('echo "Xft.rgba: rgb" | xrdb -merge', shell=True)
+        xrdb_merge(**{
+            'Xcursor.size': CURSOR_SIZE,
+            'Xcursor.theme': CURSOR_THEME,
+            'Xft.antialias': 1,
+            'Xft.dpi': 96,
+            'Xft.hinting': 0,
+            'Xft.hintstyle': 'hintnone',
+            'Xft.lcdfilter': 'lcddefault',
+            'Xft.rgba': 'rgb',
+        })
         subprocess.call(['xsetroot', '-cursor_name', 'left_ptr'])  # default cursor
+
+    set_gtk_settings(**{
+        'gtk-theme-name': GTK_THEME,
+        'gtk-icon-theme-name': ICON_THEME,
+        'gtk-cursor-theme-name': CURSOR_THEME,
+        'gtk-cursor-theme-size': CURSOR_SIZE,
+    })
 
     os.putenv('GTK_CSD', '1')
     os.putenv('ICON_THEME', ICON_THEME)
@@ -765,8 +751,10 @@ def startup():
     os.putenv('MOZ_GTK_TITLEBAR_DECORATION', 'client')
     os.putenv('MOZ_USE_XINPUT2', '1')
     os.putenv('QT_STYLE_OVERRIDE', QT_THEME)
-    # os.putenv('QT_QPA_PLATFORMTHEME', 'gnome')  # need qgnomeplatform-qt*
-    # os.putenv('FREETYPE_PROPERTIES', 'cff:no-stem-darkening=0 autofitter:no-stem-darkening=0')
+    os.putenv('VK_DRIVER_FILES', '/usr/share/vulkan/icd.d/nvidia_icd.json')
+    os.putenv('XSECURELOCK_AUTH_BACKGROUND_COLOR', '#202020')
+    os.putenv('XSECURELOCK_BACKGROUND_COLOR', '#101010')
+    os.putenv('XSECURELOCK_PASSWORD_PROMPT', 'asterisks')
 
     input_update(qtile)
 
@@ -774,10 +762,7 @@ def startup():
 @hook.subscribe.shutdown
 def shutdown():
     subprocess.call(['pkill', 'picom'])
-
-    for portal in XDG_PORTALS:
-        name = list(filter(None, ['xdg-desktop-portal', portal]))
-        subprocess.call(['pkill', '-'.join(name)])
+    portals_stop()
 
 
 @hook.subscribe.screens_reconfigured
@@ -800,6 +785,7 @@ def float_change():
         subprocess.call(['xset', 's', 'off'])
         subprocess.call(['xset', '-dpms'])
     else:
-        subprocess.call(['xset', 's', 'blank'])
-        subprocess.call(['xset', 's', 'on'])
+        subprocess.call(['xset', 's', 'noblank'])
+        subprocess.call(['xset', 's', 'off'])
         subprocess.call(['xset', '+dpms'])
+        subprocess.call(['xset', 'dpms', '0', '0', '300'])

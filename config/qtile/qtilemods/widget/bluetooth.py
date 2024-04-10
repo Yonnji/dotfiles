@@ -61,7 +61,25 @@ class Bluetooth(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
 
     @expose_command()
     def block(self):
-        subprocess.call(['rfkill', 'toggle', 'bluetooth'])
+        is_blocked = False
+
+        rfkill = json.loads(subprocess.check_output(['rfkill', '-J']).decode())
+        for dev in rfkill['rfkilldevices']:
+            if dev['type'] != 'bluetooth':
+                continue
+            if dev['hard'] == 'blocked' or dev['soft'] == 'blocked':
+                is_blocked = True
+                break
+
+        if is_blocked:
+            logger.error('unblocking bluetooth')
+            subprocess.call(['rfkill', 'unblock', 'bluetooth'])
+            subprocess.call(['bluetoothctl', 'power', 'on'])
+        else:
+            logger.error('blocking bluetooth')
+            subprocess.call(['bluetoothctl', 'power', 'off'])
+            subprocess.call(['rfkill', 'block', 'bluetooth'])
+
         self.update(self.get_signal())
 
     def get_signal(self):
