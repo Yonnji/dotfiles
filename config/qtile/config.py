@@ -499,9 +499,9 @@ keys += [
 
 # System
 keys += [
-    # Key([MOD_SUPER], 'l', lazy.spawn('xsecurelock -- systemctl suspend'),
-    #     desc='Lock screen and Suspend'),
-    Key([MOD_SUPER], 'l', lazy.spawn('systemctl suspend'),
+    Key([MOD_SUPER], 'l', lazy.function(shortcuts.lock_screen()),
+        desc='Lock screen'),
+    Key([MOD_SUPER], 'u', lazy.function(shortcuts.lock_screen(suspend=True)),
         desc='Lock screen and Suspend'),
     # Key([MOD_CONTROL, MOD_ALT], 'delete', lazy.spawn('systemctl poweroff'),
     #     desc='Power Off'),
@@ -638,9 +638,6 @@ def startup():
     os.putenv('MOZ_USE_XINPUT2', '1')
     os.putenv('QT_STYLE_OVERRIDE', QT_THEME)
     os.putenv('VK_DRIVER_FILES', '/usr/share/vulkan/icd.d/nvidia_icd.json')
-    os.putenv('XSECURELOCK_AUTH_BACKGROUND_COLOR', '#202020')
-    os.putenv('XSECURELOCK_BACKGROUND_COLOR', '#101010')
-    os.putenv('XSECURELOCK_PASSWORD_PROMPT', 'asterisks')
 
     shortcuts.input_update(qtile)
 

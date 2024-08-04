@@ -1,6 +1,7 @@
 import os
 import re
 import subprocess
+import time
 
 from libqtile import bar, layout, widget, hook, qtile
 
@@ -31,6 +32,25 @@ def take_screenshot(options=False):
         if options:
             args.append('--interactive')
         subprocess.Popen(args, start_new_session=True)
+
+    return f
+
+
+def lock_screen(suspend=False):
+    def f(qtile):
+        image = os.path.expanduser('~/Pictures/i3lock.png')
+        args = [
+            'i3lock',
+            '--show-keyboard-layout',
+            '--tiling',
+            f'--image={image}',
+        ]
+        subprocess.Popen(args)
+        if suspend:
+            subprocess.Popen(['systemctl', 'suspend'])
+        else:
+            time.sleep(2)
+            subprocess.Popen(['xset', 'dpms', 'force', 'off'])
 
     return f
 
