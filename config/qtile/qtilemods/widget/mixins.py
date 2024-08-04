@@ -47,7 +47,9 @@ class IconTextMixin(object):
             if icon:
                 if icon.endswith('.svg'):  # symbolic icon
                     with open(icon, 'r') as f:
-                        data = re.sub(r'fill="(#?[A-Za-z0-9]+)"', self._replace_svg_attr, f.read())
+                        data = f.read()
+                        data = re.sub(r'fill="(#?[A-Za-z0-9]+)"', self._replace_svg_attr, data)
+                        data = re.sub(r'"fill:(#?[A-Za-z0-9]+)"', self._replace_svg_attr, data)
                         d_imgs[icon_name] = images.Img(data.encode(), icon_name, icon)
                 else:
                     with open(icon, 'rb') as f:
