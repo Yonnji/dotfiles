@@ -49,6 +49,10 @@ class DisplayLight(IconTextMixin, base.PaddingMixin, widget.Backlight):
             'Button5': partial(self.change_backlight, ChangeDirection.DOWN),
         })
 
+        default = config.get('default')
+        if default:
+            self._change_backlight(default)
+
     def calculate_length(self):
         return (
             super().calculate_length() +
