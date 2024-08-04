@@ -60,14 +60,21 @@ class IBUS(base.PaddingMixin, base.MarginMixin, widget.KeyboardLayout):
         self.add_defaults(base.PaddingMixin.defaults)
         self.add_defaults(base.MarginMixin.defaults)
         self.add_callbacks({'Button1': self.next_keyboard})
-        self.add_callbacks({'Button2': self._ibus_setup})
-        self.add_callbacks({'Button3': self._ibus_setup})
+        self.add_callbacks({'Button2': self._ibus_daemon})
+        self.add_callbacks({'Button3': self._ibus_daemon})
 
         self.background = config.get('background', '#000000')
         self.rounded = config.get('rounded', True)
 
     def _ibus_setup(self):
         subprocess.Popen(['ibus-setup'], start_new_session=True)
+
+    def _ibus_daemon(self):
+        subprocess.call([
+            'ibus-daemon',
+            '-dxrR',
+            '-p', '/usr/lib64/gtk-4.0/4.0.0/immodules/libim-ibus.so',
+        ])
 
     def _configure(self, qtile, bar):
         base.InLoopPollText._configure(self, qtile, bar)
