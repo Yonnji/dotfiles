@@ -6,28 +6,27 @@ import re
 import subprocess
 
 
-IS_X11 = os.getenv('XDG_SESSION_TYPE').lower() == 'x11'
 ALL_OPTS = (
     'output', 'mode', 'refresh', 'primary',
     'off', 'above', 'below', 'left-of', 'right-of')
 
 
-def _randr_query():
-    app = 'xrandr' if IS_X11 else 'wlr-randr'
+def _randr_query(is_x11=False):
+    app = 'xrandr' if is_x11 else 'wlr-randr'
 
     modes = {}
     output = None
 
     lines = subprocess.check_output([app]).decode()
     for line in lines.split('\n'):
-        if line.startswith(' ' if IS_X11 else '    '):
+        if line.startswith(' ' if is_x11 else '    '):
             if not output:
                 continue
 
             if output not in modes:
                 modes[output] = {}
 
-            if IS_X11:
+            if is_x11:
                 mode, *refreshes = filter(None, line.strip().split(' '))
                 if not re.match(r'\d+x\d+', mode):
                     continue
@@ -79,9 +78,10 @@ def _get_refresh(modes, output, mode, refresh):
 
 
 def randr(**opts):
-    app = 'xrandr' if IS_X11 else 'wlr-randr'
+    is_x11 = opts.pop('is_x11', False)
+    app = 'xrandr' if is_x11 else 'wlr-randr'
 
-    modes = _randr_query()
+    modes = _randr_query(is_x11=is_x11)
     logger.error(json.dumps(modes, indent=4))
 
     output = _get_output(modes, opts.get('output'))
@@ -100,17 +100,17 @@ def randr(**opts):
             value = output
 
         elif key == 'refresh':
-            if not IS_X11:
+            if not is_x11:
                 continue
             value = refresh
 
         elif key == 'mode':
             value = mode
-            if not IS_X11 and refresh:
+            if not is_x11 and refresh:
                 value = f'{value}@{refresh}'
 
         elif key in ('above', 'below', 'left-of', 'right-of'):
-            if IS_X11:
+            if is_x11:
                 value = _get_output(modes, value)
             else:
                 if key == 'above':
