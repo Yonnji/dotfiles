@@ -10,28 +10,28 @@ from .mixins import IconTextMixin
 
 class Battery(IconTextMixin, widget.Battery):
     icon_names = (
-        'battery-level-0-charging-symbolic',
-        'battery-level-0-symbolic',
-        'battery-level-10-charging-symbolic',
-        'battery-level-10-symbolic',
-        'battery-level-20-charging-symbolic',
-        'battery-level-20-symbolic',
-        'battery-level-30-charging-symbolic',
-        'battery-level-30-symbolic',
-        'battery-level-40-charging-symbolic',
-        'battery-level-40-symbolic',
-        'battery-level-50-charging-symbolic',
-        'battery-level-50-symbolic',
-        'battery-level-60-charging-symbolic',
-        'battery-level-60-symbolic',
-        'battery-level-70-charging-symbolic',
-        'battery-level-70-symbolic',
-        'battery-level-80-charging-symbolic',
-        'battery-level-80-symbolic',
-        'battery-level-90-charging-symbolic',
-        'battery-level-90-symbolic',
-        'battery-level-100-charged-symbolic',
-        'battery-level-100-symbolic',
+        'battery-000-charging-symbolic',
+        'battery-000-symbolic',
+        'battery-010-charging-symbolic',
+        'battery-010-symbolic',
+        'battery-020-charging-symbolic',
+        'battery-020-symbolic',
+        'battery-030-charging-symbolic',
+        'battery-030-symbolic',
+        'battery-040-charging-symbolic',
+        'battery-040-symbolic',
+        'battery-050-charging-symbolic',
+        'battery-050-symbolic',
+        'battery-060-charging-symbolic',
+        'battery-060-symbolic',
+        'battery-070-charging-symbolic',
+        'battery-070-symbolic',
+        'battery-080-charging-symbolic',
+        'battery-080-symbolic',
+        'battery-090-charging-symbolic',
+        'battery-090-symbolic',
+        'battery-100-charged-symbolic',
+        'battery-100-symbolic',
         'battery-low-symbolic',
         'battery-missing-symbolic',
         'battery-action-symbolic',
@@ -72,9 +72,13 @@ class Battery(IconTextMixin, widget.Battery):
                     break
 
         if level == 100:
-            mode = '-charged'
+            # mode = '-charged'
+            mode = ''
 
-        return f'battery-level-{level}{mode}-symbolic'
+        return 'battery-{level:03d}{mode}-symbolic'.format(**{
+            'level': level,
+            'mode': mode,
+        })
 
     def calculate_length(self):
         return (
