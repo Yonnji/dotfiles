@@ -1,6 +1,6 @@
 import copy
 
-from libqtile import widget
+from libqtile import hook, widget
 from libqtile.widget import base
 
 from .mixins import IconTextMixin
@@ -10,24 +10,25 @@ class Workspaces(IconTextMixin, widget.GroupBox):
     layout_icons = {
         'bsp': 'view-grid-symbolic',
         'columns': 'view-grid-symbolic',
-        'floating': 'multiple-events-symbolic',
+        'floating': 'focus-windows-symbolic',
         'matrix': 'view-app-grid-symbolic',
-        'max': 'window-symbolic',
+        'max': 'view-fullscreen-symbolic',
         'monadtall': 'sidebar-show-right-symbolic',
         'monadthreecol': 'sidebar-show-symbolic',
         'monadwide': 'open-menu-symbolic',
         'ratiotile': 'view-restore-symbolic',
         'slice': 'sidebar-show-right-symbolic',
         'spiral': 'object-rotate-right-symbolic',
-        'stack': 'multiple-events-symbolic',
+        'stack': 'focus-windows-symbolic',
         'tile': 'view-grid-symbolic',
         'treetab': 'view-list-bullet-symbolic',
         'verticaltile': 'open-menu-symbolic',
         'zoomy': 'zoom-fit-best-symbolic',
         # custom
-        'stacking': 'multiple-events-symbolic',
-        'unmanaged': 'multiple-events-symbolic',
+        'stacking': 'focus-windows-symbolic',
+        'unmanaged': 'focus-windows-symbolic',
         'tiling': 'view-grid-symbolic',
+        'fullscreen': 'view-fullscreen-symbolic',
     }
 
     def __init__(self, **config):
@@ -41,15 +42,46 @@ class Workspaces(IconTextMixin, widget.GroupBox):
         super().__init__(**config)
         self.foreground = self.active
 
+        # default_callbacks = {
+        #     'Button1': self.select_group,
+        #     'Button2': self.select_group_secondary,
+        # }
+        # if self.use_mouse_wheel:
+        #     default_callbacks.update({
+        #         'Button5' if self.invert_mouse_wheel else 'Button4': self.prev_group,
+        #         'Button4' if self.invert_mouse_wheel else 'Button5': self.next_group,
+        #     })
+        # self.add_callbacks(default_callbacks)
+
     def _configure(self, qtile, bar):
         super()._configure(qtile, bar)
+        foreground = self.foreground
+
+        self.foreground = self.active
         self.setup_images()
         self.images_default = copy.copy(self.images)
 
-        foreground = self.foreground
         self.foreground = self.inactive
         self.setup_images()
+
         self.foreground = foreground
+
+    def setup_hooks(self):
+        super().setup_hooks()
+        hook.subscribe.layout_change(self._hook_response)
+
+    def remove_hooks(self):
+        super().remove_hooks
+        hook.unsubscribe.layout_change(self._hook_response)
+
+    def go_to_group(self, group):
+        if group:
+            if group.screen and group.screen != self.qtile.current_screen:
+                self.qtile.focus_screen(group.screen.index)
+            elif group != self.qtile.current_group:
+                self.qtile.current_screen.set_group(group, warp=False)
+            else:
+                self.qtile.next_layout()
 
     def box_width(self, groups):
         return (
@@ -77,11 +109,10 @@ class Workspaces(IconTextMixin, widget.GroupBox):
 
         if layout in self.layout_icons:
             icon_name = self.layout_icons[layout]
-            if active:
-                icon = self.images_default[icon_name]
-            else:
-                icon = self.images[icon_name]
-            self.draw_icon(icon.pattern, offset)
+            images = self.images_default if active else self.images
+            if icon_name in images:
+                icon = images[icon_name]
+                self.draw_icon(icon.pattern, offset)
 
     def draw_icon(self, surface, offset):
         if not surface:
@@ -97,7 +128,7 @@ class Workspaces(IconTextMixin, widget.GroupBox):
         self.drawer.clear(self.background or self.bar.background)
 
         offset = self.margin_x
-        for i, g in enumerate(self.groups):
+        for g in self.groups:
             bw = self.box_width([g])
             text_color = self.active if g.windows else self.inactive
 
