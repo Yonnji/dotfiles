@@ -8,7 +8,14 @@ from libqtile.command.base import expose_command
 from libqtile.log_utils import logger
 from libqtile.widget import base
 
+from qtilemods.tools import shortcuts
+
 from .mixins import IconTextMixin
+
+
+PERFORMANCE = 'performance'
+BALANCED = 'balanced'
+POWER_SAVER = 'power-saver'
 
 
 class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
@@ -31,6 +38,7 @@ class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
         self.images = {}
         self.profile_index = 0
         self.current_icon = 'power-profile-power-saver-symbolic'
+        self.callback = config.get('callback', None)
 
         base.ThreadPoolText.__init__(self, '', **config)
         self.add_defaults(base.PaddingMixin.defaults)
@@ -64,10 +72,14 @@ class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
         profile = self.profiles[profile_index]
         subprocess.call(['powerprofilesctl', 'set', profile])
 
-        if profile == 'balanced':
-            subprocess.Popen(['picom'], start_new_session=True)
+        if profile == BALANCED:
+            # subprocess.Popen(['picom'], start_new_session=True)
+            shortcuts.spawn('picom')()
         else:
             subprocess.run(['pkill', 'picom'])
+
+        if self.callback:
+            self.callback(profile)
 
         self.update(self.get_profile_index())
 
