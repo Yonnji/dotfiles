@@ -1,3 +1,5 @@
+import html
+
 from libqtile import bar, pangocffi
 from libqtile.command.base import expose_command
 from libqtile.log_utils import logger
@@ -68,14 +70,16 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
 
     @expose_command()
     def update(self, text, value=None):
+        plain_text = html.unescape(text)
+
         if value is None:
             self.value = None
         else:
             self.value = min(max(value, 0), 1)
 
-        if len(text) > self.text_length:
-            text = text[:self.text_length - 3] + '...'
-        base._TextBox.update(self, text)
+        if len(plain_text) > self.text_length:
+            plain_text = plain_text[:self.text_length - 3] + '...'
+        base._TextBox.update(self, plain_text)
 
         if self.timeout_id:
             self.timeout_id.cancel()
@@ -92,7 +96,9 @@ class Notification(base.PaddingMixin, base.MarginMixin, base._TextBox):
             return 0
 
     def drawbox(self, offset, text, bordercolor, textcolor, width=None, rounded=False):
-        self.layout.text = self.fmt.format(text)
+        plain_text = html.unescape(text)
+
+        self.layout.text = self.fmt.format(plain_text)
         self.layout.font_family = self.font
         self.layout.font_size = self.fontsize
         self.layout.colour = textcolor
