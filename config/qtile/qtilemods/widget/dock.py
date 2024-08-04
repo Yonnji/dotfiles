@@ -10,6 +10,8 @@ from libqtile.log_utils import logger
 from libqtile.notify import ClosedReason, notifier
 from libqtile.widget import base
 
+from qtilemods.tools import shortcuts
+
 from .mixins import AppMixin, IconTextMixin
 from ..icon_theme import get_icon_path
 
@@ -212,27 +214,43 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
             w = app.window
             self._notifications.pop(w, None)
 
-            if (run and app.cmd) or not w:
-                qtile.spawn(app.cmd)
+            # scratchpad
+            if isinstance(app, PinnedApp):
+                for group in qtile.groups:
+                    if hasattr(group, 'dropdown_info'):
+                        try:
+                            info = group.dropdown_info(app.name)
+                        except ValueError:
+                            pass
+                        else:
+                            group.dropdown_toggle(app.name)
+                            return
+
+            # no window yet or forced to run
+            if not w or (run and app.cmd):
+                shortcuts.spawn(app.cmd)()
                 return
 
-            if w is w.group.current_window and self.bar.screen.group.name == w.group.name:
-                # if not w.minimized:
-                #     w.minimized = True
-                w.toggle_minimize()
-
-            else:
+            # other screen
+            if w.group.screen and w.group.screen != self.bar.screen:
                 for i, screen in enumerate(qtile.screens):
                     if screen == w.group.screen:
                         qtile.focus_screen(i)
                         break
-                w.group.toscreen()
-                w.group.focus(w, False)
 
-                if w.minimized:
-                    w.minimized = False
-                if w.floating:
-                    w.bring_to_front()
+            # current group and current window
+            # if w.group == self.bar.screen.group and w == w.group.current_window:
+            if w.group.screen and w == w.group.current_window:
+                w.toggle_minimize()
+                return
+
+            w.group.toscreen()
+            w.group.focus(w, False)
+
+            if w.minimized:
+                w.minimized = False
+            if w.floating:
+                w.bring_to_front()
 
     def get_window_icon(self, app):
         if isinstance(app, PinnedApp):
@@ -266,8 +284,8 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
 
         return self._fallback_icon
 
-    def drawbox(self, offset, text, bordercolor, textcolor, width=None, rounded=False,
-                block=False, icon=None):
+    def drawbox(self, offset, text, bordercolor, textcolor,
+                width=None, rounded=False, block=False, icon=None, minimized=False):
         self.drawer.set_source_rgb(bordercolor or self.background or self.bar.background)
 
         x = offset
@@ -276,9 +294,13 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
         h = self.icon_size + self.padding_y * 2
 
         if not block:
-            x += w // 4
+            x += w // 2
+            if minimized:
+                w = w // 8
+            else:
+                w = w // 2
+            x -= w // 2
             y = 0
-            w = w // 2
             h = self.padding_y
 
         if bordercolor:
@@ -313,19 +335,26 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
         for app, icon, task, bw in self.calc_box_widths():
             self._box_end_positions.append(offset + bw)
             border = self.unfocused_border or None
+            minimized = False
 
             w = app.window
             if w:
+                if w.minimized:
+                    minimized = True
+
                 if w.urgent and not task:
                     # border = self.urgent_border
                     task = '!'
-                elif w is w.group.current_window:
+
+                elif w is w.group.current_window:  # focused
                     if self.bar.screen.group.name == w.group.name and self.qtile.current_screen == self.bar.screen:
                         border = self.border
                         self._notifications.pop(w, None)
+
                     elif self.qtile.current_screen == w.group.screen:
                         border = self.other_border
                         self._notifications.pop(w, None)
+
             else:
                 border = None
 
@@ -341,6 +370,7 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
                 block=self.highlight_method == 'block',
                 width=textwidth,
                 icon=icon,
+                minimized=minimized
             )
             offset += bw + self.spacing
 
