@@ -1,10 +1,12 @@
 #!/bin/bash
 
-if [ ${XDG_SESSION_TYPE} == "x11" ]; then
+if [ ${XDG_SESSION_TYPE} == "x11 off" ]; then
     # Usage: xrandr --setprovideroutputsource provider source
     /usr/bin/xrandr --setprovideroutputsource modesetting NVIDIA-0
     /usr/bin/xrandr --auto
-else
+fi
+
+if [ ${XDG_SESSION_TYPE} == "wayland off" ]; then
     export WLR_NO_HARDWARE_CURSORS=1
     export WLR_BACKEND=vulkan
     export WLR_RENDERER_ALLOW_SOFTWARE=1
@@ -23,5 +25,5 @@ fi
 QTILE=/var/home/yonnji/Apps/qtile
 
 source ${QTILE}/.venv/bin/activate
-# exec ${QTILE}/bin/qtile ${*} -l DEBUG
+#exec ${QTILE}/bin/qtile ${*} -l DEBUG
 exec ${QTILE}/bin/qtile ${*}
