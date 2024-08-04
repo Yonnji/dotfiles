@@ -109,7 +109,7 @@ class EntryCompleter(AppMixin, CommandCompleter):
 
 class Entry(base.PaddingMixin, base.MarginMixin, widget.Prompt):
     def __init__(self, **config):
-        # self.completers['entry'] = EntryCompleter
+        self.completers['entry'] = EntryCompleter
         super().__init__(**config)
         self.add_defaults(base.PaddingMixin.defaults)
         self.add_defaults(base.MarginMixin.defaults)
