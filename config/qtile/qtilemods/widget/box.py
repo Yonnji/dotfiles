@@ -12,8 +12,8 @@ from .mixins import IconTextMixin
 
 class Box(IconTextMixin, base.PaddingMixin, widget.WidgetBox):
     icon_names = (
-        'view-conceal-symbolic',
-        'visible-symbolic',
+        'pane-show-symbolic',
+        'pane-hide-symbolic',
     )
 
     def __init__(self, **config):
@@ -24,7 +24,7 @@ class Box(IconTextMixin, base.PaddingMixin, widget.WidgetBox):
         self.icon_size = config.get('icon_size', 0)
         self.icon_spacing = config.get('icon_spacing', 0)
         self.images = {}
-        self.current_icon = 'visible-symbolic'
+        self.current_icon = self.icon_names[0]
 
         super().__init__(**config)
         self.add_defaults(base.PaddingMixin.defaults)
@@ -43,4 +43,4 @@ class Box(IconTextMixin, base.PaddingMixin, widget.WidgetBox):
 
     def set_box_label(self):
         super().set_box_label()
-        self.current_icon = 'view-conceal-symbolic' if self.box_is_open else 'visible-symbolic'
+        self.current_icon = self.icon_names[1 if self.box_is_open else 0]
