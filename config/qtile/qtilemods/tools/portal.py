@@ -1,3 +1,4 @@
+import copy
 import os
 import subprocess
 
@@ -18,8 +19,10 @@ def portals_start(is_x11=False):
         portals.append('wlr')
 
     for portal in portals:
-        path = list(filter(None, ['/usr/libexec/xdg-desktop-portal', portal]))
-        subprocess.Popen(['-'.join(path), '-vr'], start_new_session=True, env=env)
+        path = '/usr/libexec/xdg-desktop-portal'
+        if portal:
+            path = f'{path}-{portal}'
+        subprocess.Popen([path, '-vr'], start_new_session=True, env=env)
 
 
 def portals_stop(is_x11=False):
@@ -28,5 +31,7 @@ def portals_stop(is_x11=False):
         portals.append('wlr')
 
     for portal in XDG_PORTALS:
-        name = list(filter(None, ['xdg-desktop-portal', portal]))
-        subprocess.call(['pkill', '-'.join(name)])
+        path = '/usr/libexec/xdg-desktop-portal'
+        if portal:
+            path = f'{path}-{portal}'
+        subprocess.call(['pkill', path])

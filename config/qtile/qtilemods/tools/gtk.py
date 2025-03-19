@@ -1,5 +1,6 @@
 import configparser
 import os
+import subprocess
 
 
 def set_gtk_settings(**kwargs):
@@ -22,3 +23,15 @@ def set_gtk_settings(**kwargs):
 
         with open(settings_path, 'w') as f:
             settings.write(f)
+
+    if 'gtk-cursor-theme-name' in kwargs:
+        subprocess.call([
+            'gsettings', 'set', 'org.gnome.desktop.interface',
+            'cursor-theme', kwargs['gtk-cursor-theme-name'],
+        ])
+
+    if 'gtk-cursor-theme-size' in kwargs:
+        subprocess.call([
+            'gsettings', 'set', 'org.gnome.desktop.interface',
+            'cursor-size', str(kwargs['gtk-cursor-theme-size']),
+        ])

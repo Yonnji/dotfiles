@@ -4,16 +4,16 @@ import subprocess
 import time
 
 from libqtile import bar, layout, widget, hook, qtile
+from libqtile.log_utils import logger
 
-from qtilemods.tools.randr import randr
-from qtilemods.widget.power import POWER_SAVER
 
 DISPLAY_INTERNAL = 'eDP-1'
 DISPLAY_EXTERNAL = 'DP-1'
 
 
 def is_x11():
-    return os.getenv('XDG_SESSION_TYPE').lower() in ('x11', 'tty')
+    # return os.getenv('XDG_SESSION_TYPE').lower() in ('x11', 'tty')
+    return qtile.core.name == 'x11'
 
 
 def contains(line, *values):
@@ -50,7 +50,7 @@ def lock_screen(suspend=False):
             subprocess.Popen(['systemctl', 'suspend'])
         else:
             time.sleep(2)
-            subprocess.Popen(['xset', 'dpms', 'force', 'off'])
+            subprocess.Popen(['xset', 's', 'activate'])
 
     return f
 
@@ -71,7 +71,7 @@ def remap_screens(qtile):
     qtile.focus_screen(screens[0])
 
 
-def input_update(qtile):
+def input_update(qtile, scale=1):
     if not is_x11():
         return
 
@@ -92,12 +92,26 @@ def input_update(qtile):
                 'libinput Natural Scrolling Enabled', '1'])
             subprocess.call([
                 'xinput', 'set-prop', str(id_),
-                'libinput Accel Profile Enabled', '0,', '1'])
+                'libinput Accel Profile Enabled', '0,', '0,', '1'])  # bitmask?
+            subprocess.call([
+                'xinput', 'set-prop', str(id_),
+                'Coordinate Transformation Matrix',
+                '1,', '0,', '0,',
+                '0,', '1,', '0,',
+                '0,', '0,', str(2 / scale),
+            ])
 
         elif contains(line.lower(), 'mouse', 'asus'):
             subprocess.call([
                 'xinput', 'set-prop', str(id_),
-                'libinput Accel Profile Enabled', '0,', '1'])
+                'libinput Accel Profile Enabled', '0,', '0,', '1'])  # bitmask?
+            subprocess.call([
+                'xinput', 'set-prop', str(id_),
+                'Coordinate Transformation Matrix',
+                '1,', '0,', '0,',
+                '0,', '1,', '0,',
+                '0,', '0,', str(1 / scale),
+            ])
 
         elif 'wacom' in line.lower():
             if 'stylus' in line.lower():  # pen
@@ -118,29 +132,34 @@ def input_update(qtile):
 
 
 def display_single(qtile):
-    randr(output=DISPLAY_EXTERNAL, off=True, is_x11=is_x11())
+    cmd = [
+        'anyrandr',
+        '--x11' if is_x11() else '--wayland',
+        '--output', DISPLAY_EXTERNAL,
+        '--off',
+    ]
+    logger.error(' '.join(cmd))
+    subprocess.call(cmd)
 
-    internal = {
-        'output': DISPLAY_INTERNAL,
-        'mode': '2880x1800',
-        'refresh': '120',
-        'is_x11': is_x11(),
-    }
-    randr(**internal)
+    time.sleep(5)
+
+    cmd = [
+        'anyrandr',
+        '--x11' if is_x11() else '--wayland',
+        '--output', DISPLAY_INTERNAL,
+        '--mode', '2880x1800',
+        '--refresh', '120',
+        '--primary',
+    ]
+    logger.error(' '.join(cmd))
+    subprocess.call(cmd)
+
+    time.sleep(5)
+
     remap_screens(qtile)
 
 
 def display_double(qtile):
-    external = {
-        'output': DISPLAY_EXTERNAL,
-        'mode': '1920x1080',
-        'refresh': '144',
-        'primary': True,
-        'is_x11': is_x11(),
-    }
-    randr(auto=True, is_x11=is_x11())
-    randr(**external)
-
     location = 'left-of'
     if os.path.isdir('/sys/class/drm'):
         for card in os.listdir('/sys/class/drm'):
@@ -150,14 +169,32 @@ def display_double(qtile):
                 if contains(data, b'S2522', b'SONY TV'):
                     location = 'below'
 
-    internal = {
-        'output': DISPLAY_INTERNAL,
-        'mode': '2880x1800',
-        'refresh': '120',
-        'is_x11': is_x11(),
-    }
-    internal[location] = DISPLAY_EXTERNAL
-    randr(**internal)
+    cmd = [
+        'anyrandr',
+        '--x11' if is_x11() else '--wayland',
+        '--output', DISPLAY_EXTERNAL,
+        '--mode', '1920x1080',
+        '--refresh', '144',
+        '--primary',
+    ]
+    logger.error(' '.join(cmd))
+    subprocess.call(cmd)
+
+    time.sleep(5)
+
+    cmd = [
+        'anyrandr',
+        '--x11' if is_x11() else '--wayland',
+        '--output', DISPLAY_INTERNAL,
+        '--mode', '2880x1800',
+        '--refresh', '120',
+        f'--{location}', DISPLAY_EXTERNAL,
+    ]
+    logger.error(' '.join(cmd))
+    subprocess.call(cmd)
+
+    time.sleep(5)
+
     remap_screens(qtile)
 
 
@@ -168,9 +205,9 @@ def audio_toggle(qtile):
     subprocess.Popen([os.path.expanduser('~/audio_toggle.sh'), state])
 
 
-def power_switch(profile):
+def power_switch(profile_index):
     with open('/sys/devices/system/cpu/intel_pstate/max_perf_pct', 'w') as f:
-        if profile == POWER_SAVER:
+        if profile_index == 0:  # lowest
             f.write(str(25))
         else:
             f.write(str(100))
@@ -202,11 +239,39 @@ def launch_settings(qtile):
     subprocess.Popen(['gnome-control-center'], start_new_session=True, env=env)
 
 
-def spawn(cmd):
+def spawn(cmd, **env):
     def f(*args):
-        env = {}
-        env.update(os.environ)
+        cur_env = {}
+        cur_env.update(os.environ)
+        cur_env.update(env)
+
+        args = []
+        multiarg = ''
+        for arg in cmd.split(' '):
+            if arg.startswith("'") and arg.endswith("'"):
+                args.append(arg.strip("'"))
+
+            elif arg.startswith('"') and arg.endswith('"'):
+                args.append(arg.strip('"'))
+
+            elif arg.startswith("'") or arg.startswith('"'):
+                multiarg = arg
+
+            elif arg.endswith("'") or arg.endswith('"'):
+                multiarg += ' ' + arg
+                args.append(multiarg.strip(multiarg[0]))
+                multiarg = ''
+
+            elif multiarg:
+                multiarg += ' ' + arg
+
+            else:
+                args.append(arg)
+
         # env['DRI_PRIME'] = 'pci-0000_00_02_0'
-        process = subprocess.Popen(cmd.split(' '), start_new_session=True, env=env)
+        logger.error(args)
+        # logger.error(cur_env)
+        process = subprocess.Popen(args, start_new_session=True, env=cur_env)
         # process.detach()
+
     return f

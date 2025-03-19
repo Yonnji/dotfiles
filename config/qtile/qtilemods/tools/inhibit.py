@@ -4,6 +4,7 @@ Use with @hook.subscribe.float_change decorator.
 import subprocess
 
 from libqtile import qtile
+from libqtile.log_utils import logger
 
 
 def float_change_xset():
@@ -16,14 +17,23 @@ def float_change_xset():
                 break
 
     if has_fullscreen:
-        subprocess.call(['xset', 's', 'noblank'])
-        subprocess.call(['xset', 's', 'off'])
-        subprocess.call(['xset', '-dpms'])
+        cmds = [
+            ['xset', 's', 'noblank'],
+            ['xset', 's', 'off'],
+            ['xset', '-dpms'],
+        ]
+
     else:
-        subprocess.call(['xset', 's', 'noblank'])
-        subprocess.call(['xset', 's', 'off'])
-        subprocess.call(['xset', '+dpms'])
-        subprocess.call(['xset', 'dpms', '0', '0', '300'])
+        cmds = [
+            ['xset', 's', 'noblank'],
+            ['xset', 's', 'off'],
+            ['xset', '+dpms'],
+            ['xset', 'dpms', '0', '0', '300'],
+        ]
+
+    for cmd in cmds:
+        logger.error(cmd)
+        subprocess.call(cmd)
 
 
 def inhibit_dbus():
@@ -67,7 +77,7 @@ def uninhibit_dbus():
         ])
         qtile.pm_inhibit = 0
 
-1
+
 def float_change_dbus():
     has_fullscreen = False
 
@@ -77,7 +87,7 @@ def float_change_dbus():
                 has_fullscreen = True
                 break
 
-    # if has_fullscreen:
-    #     inhibit_dbus()
-    # else:
-    #     uninhibit_dbus()
+    if has_fullscreen:
+        inhibit_dbus()
+    else:
+        uninhibit_dbus()
