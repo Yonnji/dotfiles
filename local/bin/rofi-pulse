@@ -1,0 +1,183 @@
+#!/usr/bin/env python
+
+import argparse
+import json
+import subprocess
+
+DEVICE_ICON = '🎵'
+SPEAKER_ICON = '🔈'
+MICROPHONE_ICON = '🎤'
+THEME_STR = '''
+listview {
+    columns: 1;
+}
+element {
+    padding: 0.75em;
+}
+element-icon {
+    size: 1em;
+}
+element-text {
+    padding: 0 0.25em;
+}
+'''.replace('\n', '')
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-M', '--media-class', type=str, required=False,
+        help="Channel's media class.")
+    parser.add_argument(
+        '-theme-str', type=str, required=False,
+        help="Theme as string.")
+    parser.add_argument(
+        '-dpi', type=str, required=False,
+        help="DPI.")
+    parser.add_argument(
+        '-verbose', action='store_true',
+        help="Verbose output mode."
+    )
+    return parser.parse_args()
+
+
+def get_data(media_class=None):
+    output = subprocess.check_output([
+        'pactl', '-f', 'json', 'list', 'cards' if media_class is None else f'{media_class}s',
+    ]).decode()
+    return json.loads(output)
+
+
+def get_selected_device(media_class):
+    output = subprocess.check_output([
+        'pactl', f'get-default-{media_class}',
+    ])
+    return output.decode().strip('\n')
+
+
+def main():
+    args = parse_args()
+    media_class = args.media_class or 'sink'
+
+    data = get_data()
+    if args.verbose:
+        print(json.dumps(data, indent=4))
+
+    selected_device = get_selected_device(media_class)
+
+    port_icon = SPEAKER_ICON if media_class == 'sink' else MICROPHONE_ICON
+    menu = []
+    selected_id = None
+
+    for device in data:
+        props = device.get('properties')
+        if not props:
+            continue
+
+        device_description = props.get('device.description', device['name'])
+
+        for profile_name, profile in device['profiles'].items():
+            if profile[f'{media_class}s'] == 0:
+                continue
+
+            profile_description = profile.get('description', profile_name)
+
+            for port_name, port in device['ports'].items():
+                if profile_name not in port['profiles']:
+                    continue
+
+                port_description = port.get('description', port_name)
+
+                if port['type'] == 'Mic' and media_class == 'sink':
+                    continue
+
+                menu_item = {
+                    'device_name': device['name'],
+                    'port_name': port_name,
+                    'profile_name': profile_name,
+                }
+
+                if device['name'] == selected_device and port_name == device['active_port']:
+                    selected_id = len(menu)
+
+                menu_item['label'] = (
+                    f'{DEVICE_ICON} {device_description} — '
+                    f'{port_icon} {profile_description} — '
+                    f'{port_icon} {port_description}')
+                menu.append(menu_item)
+
+    selected_item = None
+    if selected_id is not None:
+        selected_item = menu.pop(selected_id)
+
+    menu.sort(key=lambda x: x['label'])
+    if selected_item:
+        menu.insert(0, selected_item)
+
+    cmd = [
+        'rofi', '-dmenu', '-i', '-p',
+        f'{media_class}s'.title(),
+        '-theme-str', args.theme_str or THEME_STR,
+    ]
+    if args.dpi:
+        cmd += ['-dpi', args.dpi]
+
+    rofi = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True)
+    stdout, stderr = rofi.communicate(input='\n'.join([i['label'] for i in menu]))
+    if not stdout:
+        return
+
+    selected_id = None
+    for i, menu_item in enumerate(menu):
+        if menu_item['label'] == stdout.strip():
+            selected_id = i
+            break
+    else:
+        return
+
+    selected_item = menu[selected_id]
+    print(selected_item)
+
+    # select profile
+    cmd = [
+        'pactl', 'set-card-profile',
+        selected_item['device_name'],
+        selected_item['profile_name'],
+    ]
+    print(' '.join(cmd))
+    output = subprocess.check_output(cmd)
+    print(output)
+
+    # reload available sinks/sources
+    data = get_data(media_class)
+    if args.verbose:
+        print(json.dumps(data, indent=4))
+
+    selected_card_name = selected_item['device_name'].replace('alsa_card.', '')
+    for device in data:
+        if selected_card_name not in device['name']:
+            continue
+
+        for port in device['ports']:
+            if selected_item['port_name'] != port['name']:
+                continue
+
+            # select device
+            cmd = ['pactl', f'set-default-{media_class}', device['name']]
+            print(' '.join(cmd))
+            output = subprocess.check_output(cmd)
+            print(output)
+
+            # select port
+            cmd = ['pactl', f'set-{media_class}-port', device['name'], port['name']]
+            print(' '.join(cmd))
+            output = subprocess.check_output(cmd)
+            print(output)
+
+            return
+
+
+if __name__ == '__main__':
+    main()
