@@ -13,6 +13,13 @@ from libqtile.log_utils import logger
 class IBUSBackend(_BaseLayoutBackend):
     transitional_keyboard = 'xkb:us::eng'
 
+    def start_daemon(self):
+        subprocess.call([
+            'ibus-daemon',
+            '-dxrR',
+            '-p', '/usr/lib64/gtk-4.0/4.0.0/immodules/libim-ibus.so',
+        ])
+
     def get_keyboard(self) -> str:
         command = ['ibus', 'engine']
         try:
@@ -20,10 +27,10 @@ class IBUSBackend(_BaseLayoutBackend):
         except CalledProcessError:
             pass
         except OSError:
-            logger.exception('Please, check that ibus is available:')
+            logger.exception('Please, check that ibus is available')
         else:
             return output.strip('\n')
-        return 'unknown'
+        return '?'
 
     def set_keyboard(self, layout, options):
         if layout != self.transitional_keyboard:
@@ -50,31 +57,76 @@ class IBUSBackend(_BaseLayoutBackend):
             except CalledProcessError:
                 pass
             except OSError:
-                logger.error('Please, check that setxkbmap is available:')
+                logger.error('Please, check that setxkbmap is available')
 
 
-class IBUS(base.PaddingMixin, base.MarginMixin, widget.KeyboardLayout):
+
+class FCITXBackend(_BaseLayoutBackend):
+    def start_daemon(self):
+        subprocess.call([
+            'fcitx5', '-d',
+        ])
+
+    def get_keyboard(self) -> str:
+        command = ['fcitx5-remote', '-q']
+        try:
+            output = check_output(command).decode()
+        except CalledProcessError:
+            pass
+        except OSError:
+            logger.exception('Please, check that fcitx is available')
+        else:
+            return output.strip('\n')
+        return '?'
+
+    def set_keyboard(self, layout, options):
+        command = ['fcitx5-remote', '-g', layout]
+        try:
+            check_output(command)
+        except CalledProcessError:
+            pass
+        except OSError:
+            logger.error('Please, check that fcitx is available')
+
+        prefix, *var = layout.split(':')
+        if prefix == 'xkb':
+            layouts = [var[0]]
+            if 'us' not in layouts:
+                layouts.append('us')
+            command = ['setxkbmap', '-layout', ','.join(layouts)]
+            if options:
+                command += ['-option', options]
+            try:
+                check_output(command)
+            except CalledProcessError:
+                pass
+            except OSError:
+                logger.error('Please, check that setxkbmap is available')
+
+
+
+BACKENDS = {
+    'ibus': IBUSBackend,
+    'fcitx': FCITXBackend,
+}
+
+
+class KeyboardLayout(base.PaddingMixin, base.MarginMixin, widget.KeyboardLayout):
     def __init__(self, **config):
         base.InLoopPollText.__init__(self, **config)
         self.add_defaults(widget.KeyboardLayout.defaults)
         self.add_defaults(base.PaddingMixin.defaults)
         self.add_defaults(base.MarginMixin.defaults)
         self.add_callbacks({'Button1': self.next_keyboard})
-        self.add_callbacks({'Button2': self._ibus_daemon})
-        self.add_callbacks({'Button3': self._ibus_daemon})
+        self.add_callbacks({'Button2': self._start_daemon})
+        self.add_callbacks({'Button3': self._start_daemon})
 
         self.background = config.get('background', '#000000')
         self.rounded = config.get('rounded', True)
+        self.backend_name = config.get('backend', True)
 
-    def _ibus_setup(self):
-        subprocess.Popen(['ibus-setup'], start_new_session=True)
-
-    def _ibus_daemon(self):
-        subprocess.call([
-            'ibus-daemon',
-            '-dxrR',
-            '-p', '/usr/lib64/gtk-4.0/4.0.0/immodules/libim-ibus.so',
-        ])
+    def _start_daemon(self):
+        self.backend.start_daemon()
 
     def _configure(self, qtile, bar):
         base.InLoopPollText._configure(self, qtile, bar)
@@ -85,8 +137,8 @@ class IBUS(base.PaddingMixin, base.MarginMixin, widget.KeyboardLayout):
         self.prev_keyboard = self.configured_keyboards[0]
         self.prev_keyboard_time = time.time()
 
-        self.backend = IBUSBackend(qtile)
-        self.backend.set_keyboard(self.configured_keyboards[0], self.option)
+        self.backend = BACKENDS[self.backend_name](qtile)
+        # self.backend.set_keyboard(self.configured_keyboards[0], self.option)
 
     @expose_command()
     def next_keyboard(self):
