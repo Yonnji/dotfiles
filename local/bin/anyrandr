@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import re
+import subprocess
+import logging
+
+from logging import FileHandler
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-x', '--x11', action='store_true', help='X11 (xrandr) mode.')
+    parser.add_argument('-w', '--wayland', action='store_true', help='Wayland (wlr-randr) mode.')
+    parser.add_argument('-j', '--json', action='store_true', help='Dump command output in json format.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output.')
+    parser.add_argument('-o', '--output', type=str, help='Output regexp.')
+    parser.add_argument('-m', '--mode', type=str, help='Output mode.')
+    parser.add_argument('-r', '--refresh', type=str, help='Output refresh rate.')
+    parser.add_argument('-p', '--pos', type=str, help='Position in format <x>x<y>.')
+    parser.add_argument('--above', type=str, help='Move above output.')
+    parser.add_argument('--below', type=str, help='Move below outout.')
+    parser.add_argument('--left-of', type=str, help='Move left of output.')
+    parser.add_argument('--right-of', type=str, help='Move right of output.')
+    parser.add_argument('--auto', action='store_true', help='Autoconfigure.')
+    parser.add_argument('--off', action='store_true', help='Turn off.')
+    parser.add_argument('--primary', action='store_true', help='Set as primary.')
+    parser.add_argument('--dry', action='store_true', help="Dry run, don't execute.")
+    return parser.parse_args()
+
+
+def query(app, is_x11=True):
+    modes = {}
+    output = None
+
+    opts = []
+    if not is_x11:
+        opts.append('--json')
+
+    raw_data = subprocess.check_output([app] + opts).decode()
+    if is_x11:
+        for line in raw_data.split('\n'):
+            if line.startswith(' '):
+                if not output:
+                    continue
+
+                if output not in modes:
+                    modes[output] = {}
+
+                if is_x11:
+                    mode, *refreshes = filter(None, line.strip().split(' '))
+                    if not re.match(r'\d+x\d+', mode):
+                        continue
+
+                    for refresh in refreshes:
+                        if mode not in modes[output]:
+                            modes[output][mode] = {'rates': []}
+
+                        refresh = refresh.replace('*', '').replace('+', '')
+                        if not refresh:
+                            continue
+
+                        modes[output][mode]['rates'].append(refresh)
+
+                if '*' in line or '+' in line:
+                    modes[output][mode]['active'] = True
+
+            elif line.startswith('Screen'):
+                continue
+
+            else:
+                if 'disconnected' in line:
+                    continue
+                output = line.split(' ')[0]
+
+    else:
+        data = json.loads(raw_data)
+        for output_info in data:
+            output = output_info['name']
+            modes[output] = {}
+            for mode_info in output_info['modes']:
+                mode = f"{mode_info['width']}x{mode_info['height']}"
+
+                if mode not in modes[output]:
+                    modes[output][mode] = {'rates': []}
+
+                modes[output][mode]['rates'].append(str(mode_info['refresh']))
+                if mode_info['current']:
+                    modes[output][mode]['active'] = True
+
+    return modes
+
+
+def main():
+    logfile = os.path.expanduser('~/.local/share/anyrandr.log')
+    if not os.path.exists(os.path.dirname(logfile)):
+        os.makedirs(os.path.dirname(logfile))
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='[%(asctime)s] [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[FileHandler(logfile)],
+    )
+
+    args = parse_args()
+
+    is_x11 = None
+    if args.x11:
+        is_x11 = True
+    if args.wayland:
+        is_x11 = False
+    if is_x11 is None:
+        is_x11 = 'DISPLAY' in os.environ
+
+    app = 'xrandr' if is_x11 else 'wlr-randr'
+    data = query(app, is_x11)
+
+    if args.verbose:
+        if args.json:
+            print(json.dumps(data, indent=4))
+
+        else:
+            for output, modes in data.items():
+                print(f'{output}:')
+                for mode, mode_info in modes.items():
+                    print('    {}: {}'.format(
+                        mode,
+                        ', '.join(mode_info['rates']),
+                    ))
+
+    #logging.info(json.dumps(data, indent=4))
+
+    selected_output = None
+    selected_mode = None
+    secondary_output = args.above or args.below or args.left_of or args.right_of
+    secondary_mode = '0x0'
+    selected_refresh = None
+    if args.output:
+        for output, modes in data.items():
+            if args.output and re.match(args.output, output):
+                selected_output = output
+
+                if args.mode in modes:
+                    selected_mode = args.mode
+
+                    for refresh in modes[args.mode]['rates']:
+                        if round(float(args.refresh)) == round(float(refresh)):
+                            selected_refresh = refresh
+                            break
+
+            if secondary_output and re.match(secondary_output, output):
+                for mode, mode_info in modes.items():
+                    if mode_info.get('active'):
+                        secondary_mode = mode
+                        break
+
+    opts = []
+
+    if selected_output:
+        opts += ['--output', selected_output]
+
+    if selected_mode:
+        if is_x11 or not selected_refresh:
+            opts += ['--mode', selected_mode]
+        else:  # wayland + refresh rate
+            opts += ['--mode', f'{selected_mode}@{selected_refresh}']
+
+    if selected_mode:
+        width, height = map(int, selected_mode.split('x'))
+        secondary_width, secondary_height = map(int, secondary_mode.split('x'))
+        template = '{}x{}' if is_x11 else '{},{}'
+
+        if args.above:
+            opts += ['--pos', template.format(0, -height)]
+
+        elif args.below:
+            opts += ['--pos', template.format(0, secondary_height)]
+
+        elif args.left_of:
+            opts += ['--pos', template.format(-width, 0)]
+
+        elif args.right_of:
+            opts += ['--pos', template.format(secondary_width, 0)]
+
+        elif args.pos:
+            x, y = map(int, args.pos.split('x'))
+            opts += ['--pos', template.format(x, y)]
+
+        else:
+            opts += ['--pos', template.format(0, 0)]
+
+    if selected_refresh and is_x11:
+        opts += ['--rate', selected_refresh]
+
+    if args.auto and is_x11:
+        opts += ['--auto']
+
+    if args.primary and is_x11:
+        opts += ['--primary']
+
+    if args.off:
+        opts += ['--off']
+
+    if opts:
+        if args.verbose:
+           print(' '.join([app] + opts))
+        logging.info(' '.join([app] + opts))
+
+        if not args.dry and opts:
+            output = subprocess.check_output([app] + opts).decode()
+            if args.verbose:
+                print(output)
+            logging.info(output)
+
+
+if __name__ == '__main__':
+    main()
