@@ -1,17 +1,17 @@
 configuration {
-    modi: "drun,window";
-    icon-theme: "Oranchelo";
-    show-icons: true;
-    terminal: "alacritty";
-    drun-display-format: "{icon} {name}";
-    location: 0;
     disable-history: false;
-    hide-scrollbar: true;
     display-drun: " Apps ";
     display-run: " Run ";
     display-window: " Windows ";
-    display-Network: " Network ";
-    sidebar-mode: true;
+    drun-display-format: "{icon} {name}";
+    hover-select: true;
+    icon-theme: "Oranchelo";
+    location: 0;
+    me-accept-entry: "MousePrimary";
+    me-select-entry: "!MousePrimary";
+    modi: "";
+    show-icons: true;
+    terminal: "kitty";
     window-format: "{w}: {t}";
 }
 
