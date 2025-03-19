@@ -12,10 +12,17 @@ from qtilemods.tools import shortcuts
 
 from .mixins import IconTextMixin
 
+POWER_PROFILES = (
+    'power-saver',
+    'balanced',
+    'performance',
+)
 
-PERFORMANCE = 'performance'
-BALANCED = 'balanced'
-POWER_SAVER = 'power-saver'
+TUNED_PROFILES = (
+    'powersave',
+    'balanced-battery',
+    'desktop',
+)
 
 
 class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
@@ -23,11 +30,6 @@ class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
         'power-profile-power-saver-symbolic',
         'power-profile-balanced-symbolic',
         'power-profile-performance-symbolic',
-    )
-    profiles = (
-        'power-saver',
-        'balanced',
-        'performance',
     )
 
     def __init__(self, **config):
@@ -47,6 +49,10 @@ class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
             'Button1': self.switch,
         })
 
+        # profile_index = self.get_profile_index()
+        # self.set_profile_index(profile_index)
+        self.set_profile_index(1)
+
     def _configure(self, qtile, pbar):
         if self.theme_path:
             self.length_type = bar.STATIC
@@ -55,8 +61,7 @@ class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
         self.setup_images()
 
     def get_icon_key(self, profile_index):
-        profile = self.profiles[profile_index]
-        return f'power-profile-{profile}-symbolic'
+        return self.icon_names[profile_index]
 
     def calculate_length(self):
         return (
@@ -66,26 +71,50 @@ class Power(IconTextMixin, base.PaddingMixin, base.ThreadPoolText):
     @expose_command()
     def switch(self):
         profile_index = self.profile_index + 1
-        if profile_index >= len(self.profiles):
+        if profile_index >= 3:
             profile_index = 0
 
-        profile = self.profiles[profile_index]
-        subprocess.call(['powerprofilesctl', 'set', profile])
+        self.set_profile_index(profile_index)
 
-        if profile == BALANCED:
-            # subprocess.Popen(['picom'], start_new_session=True)
+        if self.callback:
+            self.callback(profile_index)
+
+        self.update(self.poll())
+
+    def set_profile_index(self, profile_index):
+        if profile_index is None:
+            return
+
+        if os.path.exists('/usr/sbin/tuned-adm'):
+            profile = TUNED_PROFILES[profile_index]
+            logger.error(f'Switching profile to: {profile}')
+            subprocess.call(['tuned-adm', 'profile', profile])
+        else:
+            profile = POWER_PROFILES[profile_index]
+            logger.error(f'Switching profile to: {profile}')
+            subprocess.call(['powerprofilesctl', 'set', profile])
+
+        if profile_index == 1:  # middle
             shortcuts.spawn('picom')()
         else:
             subprocess.run(['pkill', 'picom'])
 
-        if self.callback:
-            self.callback(profile)
-
-        self.update(self.get_profile_index())
-
     def get_profile_index(self):
-        profile = subprocess.check_output(['powerprofilesctl', 'get']).decode().strip('\n')
-        return self.profiles.index(profile)
+        if os.path.exists('/usr/sbin/tuned-adm'):
+            output = subprocess.check_output(['tuned-adm', 'active']).decode().strip('\n')
+            key, _, value = output.partition(':')
+            profile = value.strip()
+            logger.error(f'Current profile: {profile}')
+            if profile not in TUNED_PROFILES:
+                return 1
+            return TUNED_PROFILES.index(profile)
+
+        else:
+            profile = subprocess.check_output(['powerprofilesctl', 'get']).decode().strip('\n')
+            logger.error(f'Current profile: {profile}')
+            if profile not in POWER_PROFILES:
+                return 1
+            return POWER_PROFILES.index(profile)
 
     def poll(self):
         return self.get_profile_index()

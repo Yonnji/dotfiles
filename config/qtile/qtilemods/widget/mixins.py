@@ -163,6 +163,7 @@ class AppMixin(object):
             os.path.expanduser('~/.local/share/applications'),
             '/usr/local/share/applications',
             '/usr/share/applications',
+            '/var/lib/flatpak/exports/share/applications',
         )
 
         for apps_path in apps_paths:
@@ -180,6 +181,8 @@ class AppMixin(object):
         return desktops
 
     def get_icon_surface(self, filepath, size):
+        if not os.path.exists(filepath):
+            return
         icon = images.Img.from_path(filepath)
         img = icon.surface
         surface = cairocffi.SurfacePattern(img)

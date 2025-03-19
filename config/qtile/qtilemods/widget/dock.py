@@ -22,11 +22,14 @@ class App(object):
 
 
 class PinnedApp(App):
-    def __init__(self, desktop, name, icon, cmd):
+    def __init__(self, desktop, name, icon=None, cmd=None):
         self.desktop = desktop
         self.name = name
         self.icon = icon
-        self.cmd = cmd
+        self.cmd = cmd or desktop['Desktop Entry']['Exec']
+        self.cmd = re.sub(r'%[A-Za-z]', '', self.cmd)
+        self.cmd = re.sub(r'@@[A-Za-z]?', '', self.cmd)
+        self.cmd = self.cmd.strip()
 
     def clone(self):
         return PinnedApp(desktop=self.desktop, name=self.name, icon=self.icon, cmd=self.cmd)
@@ -94,37 +97,43 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
             self._fallback_icon = self.get_icon_surface(icon, self.icon_size)
 
         self.other_border = config.get('other_border', self.border)
+        self.env = config.get('env', {})
 
         self.pinned = []
-        flatpaks = dict(self.get_flatpaks())
+        # flatpaks = dict(self.get_flatpaks())
         for pinned_name in config.get('pinned_apps', []):
-            if pinned_name in flatpaks:
-                desktop = flatpaks[pinned_name]
-                surface = self.get_flatpak_icon(pinned_name, desktop)
-                if surface:
-                    app = PinnedApp(
-                        desktop=desktop, name=pinned_name,
-                        icon=surface, cmd=f'flatpak run {pinned_name}')
-                    self.pinned.append(app)
+            app = None
+
+            if isinstance(pinned_name, PinnedApp):
+                app = pinned_name
+
+            # if pinned_name in flatpaks:
+            #     desktop = flatpaks[pinned_name]
+            #     surface = self.get_flatpak_icon(pinned_name, desktop)
+            #     if surface:
+            #         app = PinnedApp(
+            #             desktop=desktop, name=pinned_name,
+            #             icon=surface, cmd=f'flatpak run {pinned_name}')
+            #         self.pinned.append(app)
 
             else:
                 for desktop_path, desktop in self.get_desktop_files():
                     if os.path.basename(desktop_path) != f'{pinned_name}.desktop':
                         continue
 
-                    icon = get_icon_path(
-                        desktop['Desktop Entry']['Icon'], size=self.icon_size,
-                        theme=self.theme_path)
-                    if icon:
-                        cmd = desktop['Desktop Entry']['Exec']
-                        cmd = re.sub(r'%[A-Za-z]', '', cmd)
-                        surface = self.get_icon_surface(icon, self.icon_size)
-                        app = PinnedApp(
-                            desktop=desktop, name=pinned_name,
-                            icon=surface, cmd=cmd)
-                        self.pinned.append(app)
-
+                    # cmd = desktop['Desktop Entry']['Exec']
+                    # cmd = re.sub(r'%[A-Za-z]', '', cmd)
+                    # app = PinnedApp(desktop=desktop, name=pinned_name, cmd=cmd)
+                    app = PinnedApp(desktop=desktop, name=pinned_name)
                     break
+
+            if app:
+                icon = get_icon_path(
+                    app.desktop['Desktop Entry']['Icon'],
+                    size=self.icon_size, theme=self.theme_path)
+                if icon:
+                    app.icon = self.get_icon_surface(icon, self.icon_size)
+                    self.pinned.append(app)
 
     async def _config_async(self):
         if notifier is None:
@@ -228,7 +237,7 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
 
             # no window yet or forced to run
             if not w or (run and app.cmd):
-                shortcuts.spawn(app.cmd)()
+                shortcuts.spawn(app.cmd, **self.env)()
                 return
 
             # other screen
@@ -249,8 +258,8 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
 
             if w.minimized:
                 w.minimized = False
-            if w.floating:
-                w.bring_to_front()
+            # if w.floating:
+            w.bring_to_front()
 
     def get_window_icon(self, app):
         if isinstance(app, PinnedApp):
@@ -262,15 +271,15 @@ class Dock(IconTextMixin, AppMixin, widget.TaskList):
             return icon
 
         for cl in w.get_wm_class() or []:
-            for appid, desktop in self.get_flatpaks():
-                name = desktop['Desktop Entry']['Name']
-                wmclass = desktop['Desktop Entry'].get('StartupWMClass')
-                if cl.lower() == name.lower() or cl.lower() == wmclass:
-                    icon = desktop['Desktop Entry']['Icon']
-                    surface = self.get_flatpak_icon(appid, desktop)
-                    if surface:
-                        self._icons_cache[w.wid] = surface
-                        return surface
+            # for appid, desktop in self.get_flatpaks():
+            #     name = desktop['Desktop Entry']['Name']
+            #     wmclass = desktop['Desktop Entry'].get('StartupWMClass')
+            #     if cl.lower() == name.lower() or cl.lower() == wmclass:
+            #         icon = desktop['Desktop Entry']['Icon']
+            #         surface = self.get_flatpak_icon(appid, desktop)
+            #         if surface:
+            #             self._icons_cache[w.wid] = surface
+            #             return surface
 
             for desktop_path, desktop in self.get_desktop_files():
                 name = desktop['Desktop Entry']['Name']

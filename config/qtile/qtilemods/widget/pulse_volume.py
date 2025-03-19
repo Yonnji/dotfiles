@@ -10,6 +10,7 @@ from libqtile.widget import base
 
 from .mixins import IconTextMixin
 from ..icon_theme import get_icon_path
+from ..tools import shortcuts
 
 
 ICON_NAMES = (
@@ -37,12 +38,14 @@ class PulseVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         ("theme_path", None, "Path of the icons"),
         ("step", 2, "Volume change for up an down commands in percentage."),
         ("icon_names", ICON_NAMES, "Icon names."),
+        ("volume_app", None, "App to control volume"),
     ]
 
     def __init__(self, **config):
         base.InLoopPollText.__init__(self, **config)
         self.add_defaults(PulseVolume.defaults)
 
+        self.volume_app = config.get('volume_app')
         self.icon_ext = config.get('icon_ext', '.png')
         self.icon_size = config.get('icon_size', 0)
         self.icon_spacing = config.get('icon_spacing', 0)
@@ -53,8 +56,8 @@ class PulseVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
 
         self.add_callbacks({
             'Button1': self.mute,
-            'Button2': self.next_channel,
-            'Button3': self.next_channel,
+            'Button2': self.run_app,
+            'Button3': self.run_app,
             'Button4': self.increase_vol,
             'Button5': self.decrease_vol,
         })
@@ -163,7 +166,7 @@ class PulseVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         current_channel_index = None
         channels = []
         for item in data:
-            if not item.get('monitor_source'):
+            if self.media_class == 'source' and item.get('monitor_source'):
                 continue
 
             if item['name'] == current_channel:
@@ -205,6 +208,7 @@ class PulseVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
     @expose_command()
     def run_app(self):
         if self.volume_app is not None:
+            logger.error(self.volume_app)
             subprocess.Popen(self.volume_app, shell=True)
 
     def poll(self):
@@ -214,7 +218,6 @@ class PulseVolume(IconTextMixin, base.PaddingMixin, base.InLoopPollText):
         if vol != self.volume:
             self.volume = vol
             self.text = ''
-            # self.text = f'{vol}%'
 
             icon = self.get_icon_key(vol)
             if icon != self.current_icon:
