@@ -1,0 +1,219 @@
+#!/usr/bin/env python
+
+import argparse
+import json
+import subprocess
+
+DEVICE_ICON = '🎵'
+SPEAKER_ICON = '🔈'
+MICROPHONE_ICON = '🎤'
+THEME_STR = '''
+listview {
+    columns: 1;
+}
+element {
+    padding: 0.75em;
+}
+element-icon {
+    size: 1em;
+}
+element-text {
+    padding: 0 0.25em;
+}
+'''.replace('\n', '')
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-M', '--media-class', type=str, required=False,
+        help="Channel's media class.")
+    parser.add_argument(
+        '-theme-str', type=str, required=False,
+        help="Theme as string.")
+    parser.add_argument(
+        '-dpi', type=str, required=False,
+        help="DPI.")
+    parser.add_argument(
+        '-verbose', action='store_true',
+        help="Verbose output mode."
+    )
+    return parser.parse_args()
+
+
+def get_data():
+    output = subprocess.check_output(['pw-dump', '--no-colors']).decode()
+    # merge multiple arrays to fix invalid json
+    output = output.replace(']\n[', ',')
+    return json.loads(output)
+
+
+def get_nodes(data, node_type):
+    for node in data:
+        if node.get('type') != node_type:
+            continue
+
+        if not node.get('info'):
+            continue
+
+        yield node
+
+
+def get_selected_device(media_class):
+    data = get_data()
+
+    for item in data:
+        if item.get('type') != 'PipeWire:Interface:Metadata':
+            continue
+
+        if item.get('props', {}).get('metadata.name') != 'default':
+            continue
+
+        metadata = item.get('metadata', [])
+        for option in metadata:
+            if option.get('key') != f'default.audio.{media_class}':
+                continue
+
+            return option.get('value', {}).get('name')
+
+
+def main():
+    args = parse_args()
+    media_class = args.media_class or 'sink'
+
+    data = get_data()
+    if args.verbose:
+        print(json.dumps(data, indent=4))
+
+    # selected_device = get_selected_device(media_class)
+
+    port_icon = SPEAKER_ICON if media_class == 'sink' else MICROPHONE_ICON
+    menu = []
+    selected_id = None
+
+    media_class_pw = '/'.join(('Audio', media_class.title()))
+
+    for device in get_nodes(data, 'PipeWire:Interface:Device'):
+        props = device['info'].get('props')
+        params = device['info'].get('params')
+        if not props or not params:
+            continue
+
+        device_description = props.get('device.description')
+
+        for profile in (params.get('EnumProfile') or []):
+            profile_description = profile['description']
+
+            for profile_class in (profile.get('classes') or []):
+                if type(profile_class) is not list:
+                    continue
+
+                media_class, _, option_name, option_ids = profile_class
+                if media_class != media_class_pw or option_name != 'card.profile.devices':
+                    continue
+
+                for option_id in option_ids:
+                    port_description = f'PORT #{option_id}'
+
+                    for port in get_nodes(data, 'PipeWire:Interface:Node'):
+                        port_props = port['info'].get('props')
+                        if not port_props or port_props.get('media.class') != media_class_pw:
+                            continue
+
+                        if port_props.get('device.id') != device['id']:
+                            continue
+
+                        if port_props.get('card.profile.device') != option_id:
+                            continue
+
+                        port_description = port_props.get('node.description')
+                        break
+
+                    if (device_description in port_description and
+                            device_description != port_description):
+                        port_description = port_description.replace(device_description, '')
+                        port_description = port_description.strip()
+
+                    menu_item = {
+                        'device_id': device['id'],
+                        'option_id': option_id,
+                        'profile_id': profile['index'],
+                    }
+
+                    menu_item['label'] = (
+                        f'{DEVICE_ICON} {device_description} — '
+                        f'{port_icon} {profile_description} — '
+                        f'{port_icon} {port_description}')
+                    menu.append(menu_item)
+
+    selected_item = None
+    if selected_id is not None:
+        selected_item = menu.pop(selected_id)
+
+    menu.sort(key=lambda x: x['label'])
+    if selected_item:
+        menu.insert(0, selected_item)
+
+    cmd = [
+        'rofi', '-dmenu', '-i', '-p',
+        f'{media_class}s'.title(),
+        '-theme-str', args.theme_str or THEME_STR,
+    ]
+    if args.dpi:
+        cmd += ['-dpi', args.dpi]
+
+    rofi = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True)
+    stdout, stderr = rofi.communicate(input='\n'.join([i['label'] for i in menu]))
+    if not stdout:
+        return
+
+    selected_id = None
+    for i, menu_item in enumerate(menu):
+        if menu_item['label'] == stdout.strip():
+            selected_id = i
+            break
+    else:
+        return
+
+    selected_item = menu[selected_id]
+    print(selected_item)
+
+    # select profile
+    cmd = [
+        'wpctl', 'set-profile',
+        str(selected_item['device_id']),
+        str(selected_item['profile_id']),
+    ]
+    print(' '.join(cmd))
+    output = subprocess.check_output(cmd)
+    print(output)
+
+    # reload available sinks/sources
+    data = get_data()
+    if args.verbose:
+        print(json.dumps(data, indent=4))
+
+    for node in get_nodes(data, 'PipeWire:Interface:Node'):
+        props = node['info'].get('props')
+        if not props or props.get('media.class') != media_class_pw:
+            continue
+
+        if props.get('device.id') != selected_item['device_id']:
+            continue
+
+        if props.get('card.profile.device') != selected_item['option_id']:
+            continue
+
+        # select sink/source
+        cmd = ['wpctl', 'set-default', str(node['id'])]
+        print(' '.join(cmd))
+        output = subprocess.check_output(cmd)
+        print(output)
+
+        return
+
+
+if __name__ == '__main__':
+    main()
