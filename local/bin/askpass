@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# exec flatpak run --command=/app/libexec/seahorse/ssh-askpass org.gnome.seahorse.Application ${*}
+# exit 0
+
+# try to get password from secret store
+PASSWORD=$(secret-tool lookup name "${*}")
+
+if [ -z "${PASSWORD}" ]; then  # no password
+    # get password from dialog window
+    PASSWORD=$(zenity --password --title="${*}")
+    # save password to secret store
+    echo -n ${PASSWORD} | secret-tool store --label="${*}" name "${*}"
+    # output password
+    echo -n ${PASSWORD}
+    exit 0
+fi
+
+# get confirmation from dialog window
+ANSWER=$(zenity --question --title="${*}" --extra-button=Reset)
+
+if [ $? == 0 ]; then  # yes
+    # output password
+    echo -n ${PASSWORD}
+    exit 0
+fi
+
+if [ ! -z "${ANSWER}" ]; then  # reset
+    secret-tool clear name "${*}"
+    # output any wrong password
+    echo -n .
+    exit 0
+fi
+
