@@ -51,7 +51,7 @@ listview {
     border: 0;
     padding: 0;
     margin: 1.25em;
-    columns: 5;
+    columns: 4;
     scrollbar: true;
 }
 
@@ -92,7 +92,6 @@ button selected {
 }
 
 message {
-    background-color: @bg-col-light;
     margin: 0.125em;
     padding: 0.125em;
     border-radius: 0.3125em;
@@ -100,9 +99,9 @@ message {
 
 textbox {
     padding: 0.375em;
-    margin: 1.25em 0 0 1.25em;
-    text-color: @blue;
-    background-color: @bg-col-light;
+    margin: 0.5em 0 0 0.5em;
+    //text-color: @blue;
+    text-color: @fg-col;
 }
 
 scrollbar {
