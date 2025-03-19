@@ -1,0 +1,166 @@
+#!/usr/bin/env python
+
+import argparse
+import copy
+import json
+import subprocess
+import sys
+
+DEVICE_ICONS = {
+    'wifi': '🛜',
+    'ethernet': '🖥️',
+    'vpn': '🛡️',
+}
+ENABLED_ICON = '✔️'
+# DISABLED_ICON = '❌'
+DISABLED_ICON = ''
+CONNECTIONS_HEADER = 'CONNECTIONS'
+WIFI_HEADER = 'WI-FI'
+BLOCKED_ICON = '❌'
+THEME_STR = '''
+listview {
+    columns: 1;
+}
+element {
+    padding: 0.75em;
+}
+element-icon {
+    size: 1em;
+}
+element-text {
+    padding: 0 0.25em;
+}
+'''.replace('\n', '')
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-theme-str', type=str, required=False,
+        help="Theme as string.")
+    parser.add_argument(
+        '-dpi', type=str, required=False,
+        help="DPI.")
+    return parser.parse_args()
+
+
+def get_connections():
+    output = subprocess.check_output([
+        'nmcli', '-f', 'active,type,name', 'c', 'show',
+    ]).decode()
+
+    for line in output.split('\n'):
+        if not line or line.startswith('ACTIVE'):
+            continue
+
+        active, _, suffix = line.partition(' ')
+        type_, _, name = suffix.strip().partition(' ')
+        yield name.strip(), type_.strip(), active.lower() == 'yes'
+
+
+def get_wifi_aps():
+    output = subprocess.check_output([
+        'nmcli', '-f', 'active,bars,ssid', 'd', 'wifi', 'list',
+    ]).decode()
+
+    for line in output.split('\n'):
+        if not line or line.startswith('ACTIVE'):
+            continue
+
+        active, _, suffix = line.partition(' ')
+        signal, _, name = suffix.strip().partition(' ')
+        yield name.strip(), signal.strip(), active.lower() == 'yes'
+
+
+def is_wlan_blocked():
+    rfkill = json.loads(subprocess.check_output(['rfkill', '-J']).decode())
+    for dev in rfkill['rfkilldevices']:
+        if dev['type'] == 'wlan' and (dev['hard'] == 'blocked' or dev['soft'] == 'blocked'):
+            return True
+    return False
+
+
+def show_menu(args, message=None):
+    menu = []
+
+    menu.append(CONNECTIONS_HEADER)
+    for device_name, device_type, is_active in get_connections():
+        if device_type not in DEVICE_ICONS:
+            continue
+        device_icon = DEVICE_ICONS[device_type]
+        status_icon = ENABLED_ICON if is_active else DISABLED_ICON
+        menu.append(f'{status_icon} {device_icon} {device_name}')
+
+    if is_wlan_blocked():
+        menu.append(f'{BLOCKED_ICON} {WIFI_HEADER} (OFF)')
+    else:
+        menu.append(f'{WIFI_HEADER} (ON)')
+
+    for ap_name, signal, is_active in get_wifi_aps():
+        status_icon = ENABLED_ICON if is_active else DISABLED_ICON
+        menu.append(f'{status_icon} {signal} {ap_name}')
+
+    cmd = [
+        'rofi', '-dmenu', '-i', '-p',
+        'Network',
+        '-theme-str', args.theme_str or THEME_STR,
+    ]
+    if args.dpi:
+        cmd += ['-dpi', args.dpi]
+    if message:
+        cmd += ['-mesg', message]
+
+    rofi = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True)
+    stdout, stderr = rofi.communicate(input='\n'.join(menu))
+
+    if not stdout:
+        return None, None, None
+
+    status, _, suffix = stdout.partition(' ')
+    info, _, name = suffix.strip().partition(' ')
+
+    return status.strip(), info.strip(), name.strip()
+
+
+def main():
+    message = None
+    while True:
+        args = parse_args()
+        status, info, name = show_menu(args, message=message)
+
+        if not info and not name:
+            return
+
+        if info in DEVICE_ICONS.values():
+            cmd = ['nmcli', 'c', 'down' if status == ENABLED_ICON else 'up', name]
+            print(f'CONNECTION: {name}')
+            print(cmd)
+
+        elif status == WIFI_HEADER or info == WIFI_HEADER:
+            # cmd = ['rfkill', 'unblock' if status == BLOCKED_ICON else 'block', 'wlan']
+            # print('SWITCH WIFI')
+            # print(cmd)
+            cmd = ['rfkill', 'toggle', 'wlan']
+            print('SWITCH WIFI')
+            print(cmd)
+
+        else:
+            cmd = ['nmcli', 'd', 'wifi', 'connect', name]
+            print(f'WI-FI AP: {name}')
+            print(cmd)
+
+        nm = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        stdout, stderr = nm.communicate()
+        message = (
+            stdout.strip().strip('\n') +
+            '\n' +
+            stderr.strip().strip('\n')
+        ).strip('\n')
+
+
+if __name__ == '__main__':
+    main()
