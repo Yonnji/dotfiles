@@ -20,14 +20,25 @@ def link(target, location):
 for c in os.listdir('config'):
     target = os.path.abspath(os.path.join('config', c))
     location = os.path.expanduser(os.path.join('~', '.config', c))
+    print(f'{target} -> {location}')
     link(target, location)
 
 for s in os.listdir(os.path.join('local', 'share')):
     target = os.path.abspath(os.path.join('local', 'share', s))
+    if not os.path.isfile(target):
+        continue
     location = os.path.expanduser(os.path.join('~', '.local', 'share', s))
+    print(f'{target} -> {location}')
+    link(target, location)
+
+for s in os.listdir(os.path.join('local', 'share', 'applications')):
+    target = os.path.abspath(os.path.join('local', 'share', 'applications', s))
+    location = os.path.expanduser(os.path.join('~', '.local', 'share', 'applications', s))
+    print(f'{target} -> {location}')
     link(target, location)
 
 for s in os.listdir(os.path.join('local', 'bin')):
     target = os.path.abspath(os.path.join('local', 'bin', s))
     location = os.path.expanduser(os.path.join('~', '.local', 'bin', s))
+    print(f'{target} -> {location}')
     link(target, location)
