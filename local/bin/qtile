@@ -1,29 +1,7 @@
 #!/bin/bash
 
-if [ ${XDG_SESSION_TYPE} == "x11 off" ]; then
-    # Usage: xrandr --setprovideroutputsource provider source
-    /usr/bin/xrandr --setprovideroutputsource modesetting NVIDIA-0
-    /usr/bin/xrandr --auto
-fi
-
-if [ ${XDG_SESSION_TYPE} == "wayland off" ]; then
-    export WLR_NO_HARDWARE_CURSORS=1
-    export WLR_BACKEND=vulkan
-    export WLR_RENDERER_ALLOW_SOFTWARE=1
-    export WLR_DRM_NO_MODIFIERS=1
-
-    # ls -l /dev/dri/by-path
-    # card0 - NVIDIA, card1 - iGPU
-    export WLR_DRM_DEVICES=/dev/dri/card1:/dev/dri/card0
-    #export WLR_DRM_DEVICES=/dev/dri/card1
-
-    # https://wiki.archlinux.org/title/Wayland
-    export GBM_BACKEND=nvidia-drm
-    export __GLX_VENDOR_LIBRARY_NAME=nvidia
-fi
-
 QTILE=/var/home/yonnji/Apps/qtile
 
 source ${QTILE}/.venv/bin/activate
-#exec ${QTILE}/bin/qtile ${*} -l DEBUG
+# exec ${QTILE}/bin/qtile ${*} -l DEBUG
 exec ${QTILE}/bin/qtile ${*}
